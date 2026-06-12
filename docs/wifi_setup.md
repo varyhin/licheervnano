@@ -1,6 +1,6 @@
 # Подключение к Wi-Fi на LicheeRV Nano W
 
-Краткая инструкция для AIC8800 + wpa_supplicant + dhclient в Debian 13 на варианте W.
+Краткая инструкция для Wi-Fi на чипе AIC8800D80 (физически AIC8801 U03) + wpa_supplicant + dhclient в Debian 13 на варианте W.
 
 ## Что должно быть до начала
 
