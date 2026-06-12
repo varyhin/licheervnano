@@ -3,6 +3,8 @@
 Краткая инструкция по работе с UART1 и UART2 на 2×14-pin header
 LicheeRV Nano под mainline Linux 6.18.29.
 
+Статус: порты включены в board-DTS с pinmux (патч 0021).
+
 ## Что включено в образ
 
 - DTS активирует `&uart1` и `&uart2` со status okay

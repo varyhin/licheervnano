@@ -3,6 +3,8 @@
 Краткая инструкция по работе с GPIO 2x14 header LicheeRV Nano под
 mainline Linux 6.18.29.
 
+Статус: GPIO chips и USER LED проверены на железе 2026-06-03.
+
 ## Что включено в образ
 
 - Mainline `pinctrl-sg2002` + `snps,dw-apb-gpio` драйверы (built-in)
