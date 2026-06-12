@@ -92,19 +92,9 @@ cat /sys/bus/iio/devices/iio:device0/sampling_frequency
 # например 1000
 ```
 
-Перевод raw в mV на SoC pad ADC1 (внутреннее, до делителя):
-
-```
-adc1_mV = raw * 3300 / 4096
-```
-
-Перевод raw в mV на header pin (после делителя R6+R10):
-
-```
-header_mV = raw * 3300 / 4096 * 15.1 / 5.1 ≈ raw * 2.385
-```
-
-Например raw=2048 → adc1_mV≈1650, header_mV≈4882.
+Перевод raw в mV на SoC pad ADC1 (внутреннее, до делителя) считается
+как raw × 3300 / 4096. Формула для header pin с учётом делителя
+приведена выше в разделе Hardware.
 
 ## Скриптовая обвязка
 
