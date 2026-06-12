@@ -6,11 +6,11 @@
 ## Что на плате
 
 - Синий LED у кнопки `USER` это user-LED `D1`, схемный узел
-  `GPIOA_14 -> LED1 -> R28 5.1K -> GND`. Это ЕДИНСТВЕННЫЙ управляемый LED.
+  `GPIOA_14 → LED1 → R28 5.1K → GND`. Это ЕДИНСТВЕННЫЙ управляемый LED.
   Полярность `GPIO_ACTIVE_HIGH` (пин HIGH = горит). Распаян (прежняя гипотеза
   про DNP опровергнута замером).
 - Красный LED у кнопки `RESET` это `LED2`, аппаратный индикатор питания 3.3V
-  (`VDD3V3_SYS -> LED2 -> R30 5.1K -> GND`), к GPIO НЕ подключён, софтом не
+  (`VDD3V3_SYS → LED2 → R30 5.1K → GND`), к GPIO НЕ подключён, софтом не
   управляется. Отключить только выпайкой `R30`/`LED2`. На GPIOA14 не реагирует.
 
 ## Две вещи, без которых синий не работает
@@ -54,7 +54,7 @@
 зависимости от boot. Тот же патч `patches/linux/0018-...-user-led.patch`
 (покрывает b/e/w/we) ещё и выключает LED по умолчанию (`default-state = "off"`
 вместо `linux,default-trigger = "mmc0"`, в покое погашен) и переименовывает
-sysfs-лейбл `licheerv-nano:green:user` -> `licheerv-nano:blue:user` (LED синий).
+sysfs-лейбл `licheerv-nano:green:user` → `licheerv-nano:blue:user` (LED синий).
 
 ## Поведение при загрузке (boot)
 

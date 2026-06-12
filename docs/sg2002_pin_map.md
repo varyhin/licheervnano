@@ -90,10 +90,10 @@ SPI на header не выведен.
 | ADC1 | 59 | ADC1 | XGPIOB[3], KEY_COL2 | ADC channel 1 (SAR-ADC) |
 | GPIOP 19 / UART3 TX / IIC1 SCL / PWM 4 / SPI2 CS / SDIO1 D3 | 51 | SD1_D3 | PWR_GPIO[18], SPI2_CS_X, IIC1_SCL, UART3_RX, PWM[10] | I2C1 SCL (pinmux 0x2) или SDIO1 D3 на W/WE |
 | GPIOP 22 / IIC1 SDA / UART3 RTS / PWM 8 / SPI2 MISO / SDIO1 D1 | 54 | SD1_D0 | PWR_GPIO[21], SPI2_SDI, IIC1_SDA, UART3_RTS, PWM[7] | I2C1 SDA (pinmux 0x2) или SDIO1 D0 на W/WE. Sipeed маркировка SDIO1 D1 на этом пине ошибочна, реально SoC SD1_D0 |
-| GPIOP 21 / UART3 CTS / IIC3 SCL / PWM 5 / SPI2 MOSI / SDIO1 CMD | 55 | SD1_CMD | PWR_GPIO[22], SPI2_SDO, IIC3_SCL, UART3_CTS, PWM[8] | I2C3 SDA (pinmux 0x2) или SDIO1 CMD на W/WE |
-| GPIOP 20 / UART3 RX / PWM 7 / SPI2 SCK / SDIO1 CLK | 56 | SD1_CLK | PWR_GPIO[23], SPI2_SCK, IIC3_SDA, UART3_TX, PWM[9] | I2C3 SCL (pinmux 0x2) или SDIO1 CLK на W/WE |
+| GPIOP 21 / UART3 CTS / IIC3 SCL / PWM 5 / SPI2 MOSI / SDIO1 CMD | 55 | SD1_CMD | PWR_GPIO[22], SPI2_SDO, IIC3_SCL, UART3_CTS, PWM[8] | I2C3 SCL (pinmux 0x2) или SDIO1 CMD на W/WE |
+| GPIOP 20 / UART3 RX / PWM 7 / SPI2 SCK / SDIO1 CLK | 56 | SD1_CLK | PWR_GPIO[23], SPI2_SCK, IIC3_SDA, UART3_TX, PWM[9] | I2C3 SDA (pinmux 0x2) или SDIO1 CLK на W/WE |
 | GPIOP 18 | 50 | (вакантный SoC pin на QFN-38) | пин не задействован SoC в QFN-38, заглушка | свободен |
-| GPIOA 14 | 15 | SD0_PWR_EN | XGPIOA[14], SDIO0_PWR_EN | user LED (D1 на плате, trigger mmc0) |
+| GPIOA 14 | 15 | SD0_PWR_EN | XGPIOA[14], SDIO0_PWR_EN | user LED (D1 на плате, default off, триггер через sysfs) |
 | 3V3 | - | - | - | 3.3V supply |
 
 Sipeed label "PWM N" на header привязан к их header convention, не к
