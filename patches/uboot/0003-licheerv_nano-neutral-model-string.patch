@@ -1,0 +1,26 @@
+Назначение: нейтральная строка model в control-DT U-Boot.
+
+U-Boot собирается с одним DTS (sg2002-licheerv-nano-b) на все четыре
+варианта платы, и этот DTB уходит в OpenSBI через FW_FDT_PATH. OpenSBI
+печатает корневое свойство model как Platform Name, поэтому в баннере
+при загрузке любого варианта (E/W/WE) значилось «LicheeRV Nano B».
+Ядро при этом грузит правильный вариант-DTB из extlinux-меню, проблема
+чисто косметическая, но баннер вводит в заблуждение.
+
+Фикс: model = "LicheeRV Nano" без суффикса варианта. Свойство
+compatible не трогаем, на него может быть завязан код и скрипты.
+
+Проверка на железе: до патча OpenSBI печатал «Platform Name : LicheeRV
+Nano B» на варианте E (boot-log 2026-06-12).
+
+--- a/arch/riscv/dts/sg2002-licheerv-nano-b.dts
++++ b/arch/riscv/dts/sg2002-licheerv-nano-b.dts
+@@ -8,7 +8,7 @@
+ #include "sg2002.dtsi"
+ 
+ / {
+-	model = "LicheeRV Nano B";
++	model = "LicheeRV Nano";
+ 	compatible = "sipeed,licheerv-nano-b", "sipeed,licheerv-nano", "sophgo,sg2002";
+ 
+ 	aliases {
