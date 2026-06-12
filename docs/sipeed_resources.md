@@ -51,89 +51,27 @@ SCH. Программно у нас 4 DTS варианта (B/E/W/WE), что п
 
 ## Ключевые находки из schematic (актуально для текущего bring-up)
 
-### USER LED это ACTIVE_HIGH (ПОПРАВКА 2026-06-03, прежняя запись «ACTIVE_LOW» НЕВЕРНА)
+### USER LED это ACTIVE_HIGH на GPIOA14 (управляемый D1)
 
-ПОПРАВКА (железо 2026-06-03): раздел ниже содержит ошибки, оставлен как история.
-Истинная картина по прямому замеру: синий LED у кнопки USER это user-LED `D1` на
-`GPIOA14`, РАСПАЯН, полярность `GPIO_ACTIVE_HIGH` (пин HIGH = горит). Красный у
-кнопки RESET это `LED2`, индикатор питания 3.3V (НЕ 5V VBUS), к GPIO не подключён,
-софтом не управляется. Прежние выводы «LED1 active-low», «D1 DNP на 70418» и «оба
-LED у USB-C это индикаторы питания» ОПРОВЕРГНУТЫ. Корень ошибки это инверсия от
-патча `0006` (поставил active-low, LED стал гореть в покое). По тексту схемы:
-`GPIOA_14 → LED1 → R28 5.1K → GND` (active-high), `VDD3V3_SYS → LED2 → R30 5.1K →
-GND` (индикатор). Vendor подтверждает: `src/licheerv-nano-build-vendor/build/boards/
-sg200x/sg2002_licheervnano_sd/u-boot/cvi_board_init.c` (`user_led_on()` = пин HIGH)
-+ board-DTS `GPIO_ACTIVE_HIGH`. Актуальный разбор: `docs/led_setup.md`
-и `docs/gpio_setup.md`.
+По прямому замеру на железе 2026-06-03 синий LED у кнопки USER это
+user-LED `D1` на `GPIOA14`, РАСПАЯН, полярность `GPIO_ACTIVE_HIGH`
+(пин HIGH = горит), по умолчанию off (label `licheerv-nano:blue:user`).
+Красный у кнопки RESET это `LED2`, индикатор питания 3.3V (НЕ 5V VBUS),
+к GPIO не подключён, софтом не управляется. По тексту схемы:
+`GPIOA_14 → LED1 → R28 5.1K → GND` (active-high), `VDD3V3_SYS → LED2 →
+R30 5.1K → GND` (индикатор). Vendor подтверждает:
+`src/licheerv-nano-build-vendor/build/boards/sg200x/sg2002_licheervnano_sd/u-boot/cvi_board_init.c`
+(`user_led_on()` = пин HIGH) + board-DTS `GPIO_ACTIVE_HIGH`. Верную
+полярность задаёт `patches/linux/0018-licheerv-nano-user-led.patch`
+(b/e/w/we), раннее гашение синего в boot это
+`patches/fsbl/0002-user-led-off-blue.patch`.
 
-Ниже исходный (ОШИБОЧНЫЙ) разбор, page 3 блок "PWR & User LED | BOOT & RESET KEY":
-
-```
-VDD3V3_SYS --[R28 5.1K]--+
-                          |
-                       (anode)
-                        LED1
-                      (cathode)
-                          |
-                       GPIOA_14
-```
-
-LED1 светится когда GPIOA_14 = LOW (ток `Vcc/R = 3.3V / 5.1K = 0.65 mA`
-через диод). GPIOA_14 = HIGH тушит LED. Mainline DTS Thomas Bonnefille:
-
-```
-user-led {
-    label = "licheerv-nano:blue:user";
-    gpios = <&porta 14 GPIO_ACTIVE_HIGH>;  // ОШИБКА, должно быть ACTIVE_LOW
-    linux,default-trigger = "mmc0";
-};
-```
-
-С `GPIO_ACTIVE_HIGH` поведение инвертировано:
-
-- `echo 1 > brightness` пишет logical 1 в leds-gpio, что transalates в
-  physical GPIO=HIGH (ACTIVE_HIGH semantics). LED тушится
-- `echo 0 > brightness` → GPIO=LOW → LED горит тускло
-
-mmc0 trigger тоже работает инвертированно. Фикс в нашем DTS:
-`gpios = <&porta 14 GPIO_ACTIVE_LOW>`.
-
-Также из схемы видно что R28 = 5.1 KΩ ограничивающий резистор,
-что даёт ток ~0.65 mA. LED скорее всего низковатно по яркости при
-3.3V supply, виден лишь в темноте.
-
-ВАЖНО: на mass-production PCB ревизии 70418 USER LED1 физически
-отсутствует (DNP, do not populate). Прямой `gpioset` toggle на
-GPIOA_14 после unbind leds-gpio не вызывает никакого visual
-изменения на плате. Видимые синий + красный LED около USB-C
-connector это hardware-only power indicators (5V VBUS и
-3.3V output регулятора XC6206), они НЕ подключены к GPIO.
-
-Зачем их два это индикация двух ступеней питания по отдельности.
-Красный это вход 5V VBUS с USB-C (внешнее питание пришло). Синий
-это 3.3V (VDD3V3_SYS, выход LDO XC6206), от которого питается SoC.
-В схеме индикатор 3.3V это LED2 (`VDD3V3_SYS → LED2 → R30 5.1K →
-GND`), индикатор 5V сидит на VBUS. Польза в диагностике с одного
-взгляда. Оба горят это питание в норме. Горит только 5V, а 3.3V
-погас это LDO сдох или короткое ниже по цепи. Не горит ни один
-это нет входного питания.
-
-Привязка цвет к шине подтверждена фото включённой платы (2026-05-29)
-и silkscreen-метками. Оба LED справа от USB-C, между разъёмом и
-кнопками. Верхний красный у кнопки RESET (метка `VBUS`) это 5V VBUS.
-Нижний синий у кнопки USER (метка `3V3`) это 3.3V (VDD3V3_SYS),
-это схемный LED2. То есть красный = 5V вход, синий = 3.3V логика.
-
-ОПРОВЕРГНУТО на железе 2026-06-03 (разбор в `docs/led_setup.md`). Прежняя теория «синий это индикатор питания 3.3V, а
-user-LED1 на GPIOA_14 не запаян (DNP)» неверна, как и привязка
-цвет к шине выше. По факту: синий LED у кнопки USER это и есть
-распаянный управляемый user-LED D1 на GPIOA[14], `GPIO_ACTIVE_HIGH`,
-по умолчанию off (label `licheerv-nano:blue:user`). Верную полярность
-задаёт `patches/linux/0018-licheerv-nano-user-led.patch` (b/e/w/we),
-раннее гашение синего в boot это `patches/fsbl/0002-user-led-off-blue.patch`.
-Прежний патч `0006` ставил неверный `GPIO_ACTIVE_LOW` и УДАЛЁН (коммит
-bc0f2cdbe). Неуправляемый индикатор 3.3V это отдельный красный LED2 у
-кнопки RESET (`VDD3V3 → LED2 → R30 → GND`).
+Исторические заблуждения (схемный разбор active-low, версия «D1 DNP на
+70418», теория «оба LED у USB-C это индикаторы питания» с привязкой
+цветов к шинам) опровергнуты замером 2026-06-03 и удалены из этого
+документа. Корнем ошибки была инверсия от прежнего патча `0006`
+(active-low, LED горел в покое), патч удалён (коммит bc0f2cdbe).
+Актуальный разбор в `docs/led_setup.md` и `docs/gpio_setup.md`.
 
 ### USER button отсутствует в hardware
 
@@ -206,7 +144,7 @@ BT_RTX, BT_TXD, BT_RXD. Для UART HCI BT нужно мостить эти 4 п
 Footprint U14 "AW9962EDNR" блок "Backlight LED Driver". Принимает
 PWM сигнал `BL_PWM` (источник не указан в этой странице) и драйвит
 LCD0_BL+ / LCD0_BL- (anode/cathode подсветки LCD панели). C40
-10uF/25V boost output capacitor, L4 10uH boost inductor — это
+10uF/25V boost output capacitor, L4 10uH boost inductor это
 DC-DC converter для повышения 3.3V до Vf×N (где N это количество
 последовательных LED в backlight).
 
@@ -276,9 +214,9 @@ Vin на header → ADC1 = Vin × 5.1K / (10K + 5.1K) = Vin × 0.338.
 напряжение на header которое не перегружает ADC = 3.3 / 0.338 =
 9.76 V.
 
-Это значит наш `docs/adc_setup.md` неверно говорит "ADC принимает
-0..3.3V на header" - реально 0..9.76V благодаря делителю. Перевод
-raw в напряжение на header:
+Реальный диапазон на header это 0..9.76V благодаря делителю (отражено
+в `docs/adc_setup.md`, раздел Hardware). Перевод raw в напряжение на
+header:
 
 ```
 voltage_header_mV = raw × 3300 × (10 + 5.1) / 5.1 / 4096
@@ -287,7 +225,7 @@ voltage_header_mV = raw × 3300 × (10 + 5.1) / 5.1 / 4096
 ```
 
 При raw=4095: ~9760 mV. Подходит для измерения 0..10 В battery
-monitoring и аналогичных. Файл `docs/adc_setup.md` стоит обновить.
+monitoring и аналогичных.
 
 ## TODO работа на основе schematic
 
