@@ -1,0 +1,446 @@
+Назначение: форвард-порт vendor kernel-драйвера Cvitek TPU (soph_tpu) с
+ядра 5.10 на mainline 6.18.29, riscv64. HAL "mars" = cv181x / SG2002.
+
+Источник: osdrv/interdrv/v2/tpu из sipeed/LicheeRV-Nano-Build (пин в
+manifest/sources.mk). Снапшот в src/cvitek-tpu-vendor это полный
+verbatim-подпуть upstream, включая неиспользуемые сборкой hal/phobos и
+scripts. Патч применяется поверх него (git apply -p1 из
+src/cvitek-tpu-vendor) и трогает три файла: Makefile (переписан под
+mainline kbuild, собирается только mars-HAL), common/cvi_tpu_interface.c,
+hal/mars/tpu_platform.c. Новые файлы порта (tpu_kernel_compat.h,
+uapi/cvi_tpu_ioctl.h) приносит overlay/cvitek-tpu-vendor/ на шаге
+make patches-apply.
+
+Содержательные изменения (всё помечено комментарием "forward-port 6.18"):
+
+1. ION удалён из mainline. Драйвер брал vaddr/paddr из dma_buf->priv,
+   кастя в struct ion_buffer (поля .vaddr/.paddr, vendor-расширение).
+   cvi_tpu_prepare_buffer/cleanup_buffer переписаны на стандартный
+   dma-buf API: dma_buf_attach + dma_buf_map_attachment_unlocked
+   (paddr = sg_dma_address первого сегмента) + dma_buf_vmap_unlocked
+   (vaddr через struct iosys_map). Требование: cmdbuf физически
+   непрерывен (nents==1), userspace аллоцирует из CMA dma-heap.
+
+2. arch_sync_dma_for_device() НЕ экспортируется для модулей на riscv.
+   cvi_tpu_cache_flush/invalidate переведены на экспортируемые
+   dma_sync_single_for_device()/_for_cpu() (на SoC без IOMMU
+   paddr == dma_addr, семантика та же).
+
+3. class_create() потерял аргумент owner в 6.4 -> вызов без THIS_MODULE.
+
+4. platform_driver .remove теперь возвращает void (6.11) -> сигнатура
+   cvi_tpu_remove + убран return 0.
+
+5. dma_buf_* экспортируются в namespace DMA_BUF -> MODULE_IMPORT_NS("DMA_BUF").
+
+6. dma_buf API: не-unlocked варианты требуют resv-lock (6.x) ->
+   map_attachment/unmap_attachment/vmap/vunmap заменены на *_unlocked.
+
+7. Явные include vmalloc.h и scatterlist.h (в 5.10 подтягивались
+   транзитивно): vmalloc/vfree/sg_dma_address.
+
+8. tpu_platform.c (mars): убран include linux/streamline_annotate.h
+   (ARM DS-5, нет в mainline; макросы PLATTAG_* и так #if 0).
+
+9. НОВЫЙ ioctl CVITPU_GET_PADDR (uapi/cvi_tpu_ioctl.h из overlay + обработчик
+   cvi_tpu_get_paddr в common/cvi_tpu_interface.c). Userspace-рантайм на
+   mainline аллоцирует cmdbuf из dma-buf CMA heap и не может сам достать
+   физ. адрес: mmap dma-heap CMA это спец-отображение, /proc/self/pagemap
+   его не транслирует. Поэтому физадрес отдаёт ядро: dma_buf_get(fd) +
+   attach + map_attachment_unlocked + sg_dma_address первого сегмента (тот
+   же путь, что cvi_tpu_prepare_buffer на submit). Парный аллокатору
+   рантайма (tools/cviruntime, патч 0001).
+
+TEE-путь править не пришлось: в mars-HAL platform_*_tee() уже
+no-op заглушки (vendor: "cv181x project not support tpu TEE").
+
+Собирается чисто против build/linux (vermagic 6.18.29, alias cvitek,tpu).
+Подтверждено на железе 2026-06-02: mobilenet_v2 BF16 через наш
+glibc-рантайм, Forward OK ~22 мс, argmax совпал с эталоном onnxruntime.
+
+--- a/Makefile
++++ b/Makefile
+@@ -1,29 +1,37 @@
+-include $(PWD)/../Makefile.interdrv.param
++# Out-of-tree сборка форвард-портнутого vendor Cvitek TPU driver (soph_tpu)
++# под mainline 6.18.29, riscv64. HAL "mars" = cv181x / SG2002.
++#
++# Сборка (как прочие компоненты проекта, ядро уже собрано в build/linux):
++#   make -C src/cvitek-tpu-vendor \
++#        KDIR=$PWD/build/linux ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu-
++#
++# Результат: soph_tpu.ko. Узел DT cvitek,tpu добавляется отдельным патчем
++# в board-DTS (clk CLK_TPU/CLK_TPU_FAB, reset RST_TDMA/RST_TPU/RST_TPUSYS,
++# reg 0xc100000/0xc101000, irq 75/76).
+ 
+-PWD := $(shell pwd)
++MODULE_NAME := soph_tpu
+ 
+-ccflags-y +=	-I$(src)/../include/uapi \
+-				-I$(src)/common \
+-				-I$(src)/hal/$(CHIP_CODE) \
+-				-I$(srctree)/drivers/tee \
+-				-I$(srctree)/arch/arm64/include \
+-				-I$(srctree)/drivers/staging/android/ion \
+-				-I$(src)/../include/common/uapi/linux
+-
+-obj-m += soph_tpu.o
+-soph_tpu-y += common/cvi_tpu_interface.o
+-soph_tpu-y += hal/$(CHIP_CODE)/tpu_platform.o
+-soph_tpu-y += hal/$(CHIP_CODE)/tpu_pmu.o
++obj-m += $(MODULE_NAME).o
++$(MODULE_NAME)-y := \
++	common/cvi_tpu_interface.o \
++	hal/mars/tpu_platform.o \
++	hal/mars/tpu_pmu.o
+ 
+-all:
+-	$(MAKE) ARCH=${ARCH} -C $(KERNEL_DIR) M=$(PWD) modules
++# kernel 6.18 compat shims (см. tpu_kernel_compat.h)
++ccflags-y += -include $(src)/tpu_kernel_compat.h
++
++# заголовки ищутся по basename из common/, hal/mars/ и uapi/
++ccflags-y += -I$(src)/common
++ccflags-y += -I$(src)/hal/mars
++ccflags-y += -I$(src)/uapi
++
++KDIR ?= /lib/modules/$(shell uname -r)/build
++PWD  := $(shell pwd)
++
++all: modules
++modules:
++	$(MAKE) -C $(KDIR) M=$(PWD) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) modules
+ 
+ clean:
+-	@rm -f *.o* *.ko
+-	@rm -f Module.symvers modules.order
+-	@rm -f *.mod.c *.mod
+-	@rm -rf .tmp_versions
+-	@rm -f .*cmd
+-	@rm -f $(CHIP)/*.o*
+-	@rm -f $(CHIP)/.*cmd
+-	@find . -name \*.o* -type f -delete
++	$(MAKE) -C $(KDIR) M=$(PWD) clean
++	rm -f common/*.o hal/mars/*.o
+--- a/common/cvi_tpu_interface.c
++++ b/common/cvi_tpu_interface.c
+@@ -32,6 +32,11 @@
+ #include <linux/dma-mapping.h>
+ #include <linux/kthread.h>
+ #include <linux/slab.h>
++/* forward-port 6.18: в 5.10 vmalloc/vfree и sg_dma_address подтягивались
++ * транзитивно, теперь нужны явные include.
++ */
++#include <linux/vmalloc.h>
++#include <linux/scatterlist.h>
+ #include <linux/clk.h>
+ #include <asm/cacheflush.h>
+ #include <linux/of.h>
+@@ -49,7 +54,12 @@
+ #include "cvi_tpu_ioctl.h"
+ #include "tpu_platform.h"
+ 
+-#include "ion.h"
++/*
++ * forward-port 6.18: ION удалён из mainline. Вместо доступа к
++ * dma_buf->priv как к struct ion_buffer (поля .vaddr/.paddr) используем
++ * стандартный dma-buf API (attach + map_attachment + vmap), см.
++ * cvi_tpu_prepare_buffer(). #include "ion.h" убран.
++ */
+ 
+ #define CVI_TPU_CDEV_NAME "cvi-tpu"
+ #define CVI_TPU_CLASS_NAME "cvi-tpu"
+@@ -72,6 +82,7 @@
+ 	struct dma_buf *dma_buf;
+ 	struct dma_buf_attachment *dma_attach;
+ 	struct sg_table *dma_sgt;
++	struct iosys_map dmabuf_map;	/* forward-port 6.18: для dma_buf_vmap/vunmap */
+ 	void *dmabuf_vaddr;
+ 	uint64_t dmabuf_paddr;
+ 	struct tpu_tee_submit_info tee_info;
+@@ -296,11 +307,18 @@
+ 	return ret;
+ }
+ 
++/*
++ * forward-port 6.18: ранее vaddr/paddr брались из dma_buf->priv как из
++ * struct ion_buffer. ION в mainline удалён, поэтому используем
++ * стандартный dma-buf API. TPU программирует абсолютные физические
++ * адреса в регистры (arraybase, src/dst base), значит cmdbuf обязан быть
++ * одним физически непрерывным сегментом. Userspace-runtime должен
++ * аллоцировать его из CMA dma-heap (/dev/dma_heap/...), тогда
++ * sg_dma_address первого сегмента == физический адрес (IOMMU нет).
++ */
+ static int cvi_tpu_prepare_buffer(struct cvi_list_node *node)
+ {
+ 	int ret = 0;
+-	struct ion_buffer *buffer;
+-	struct file *fp;
+ 	struct dma_hdr_t *header;
+ 
+ 	node->dma_buf = dma_buf_get(node->dmabuf_fd);
+@@ -311,26 +329,39 @@
+ 		return -EINVAL;
+ 	}
+ 
+-	ret = dma_buf_begin_cpu_access(node->dma_buf, DMA_TO_DEVICE);
+-	if (ret) {
+-		dma_buf_put(node->dma_buf);
+-		return ret;
++	node->dma_attach = dma_buf_attach(node->dma_buf, node->dev);
++	if (IS_ERR(node->dma_attach)) {
++		pr_err("dma_buf_attach failed\n");
++		ret = -EINVAL;
++		goto err_attach;
+ 	}
+ 
+-	buffer = node->dma_buf->priv;
+-	node->dmabuf_vaddr = buffer->vaddr;
+-	pr_debug("v=0x%llx\n", (uint64_t)node->dmabuf_vaddr);
++	node->dma_sgt = dma_buf_map_attachment_unlocked(node->dma_attach, DMA_BIDIRECTIONAL);
++	if (IS_ERR(node->dma_sgt)) {
++		pr_err("dma_buf_map_attachment failed\n");
++		ret = -EINVAL;
++		goto err_map;
++	}
+ 
+-	if (IS_ERR(node->dmabuf_vaddr)) {
+-		pr_err("got v_addr failed\n");
++	if (node->dma_sgt->nents != 1) {
++		pr_err("tpu dmabuf must be physically contiguous (nents=%u)\n",
++		       node->dma_sgt->nents);
+ 		ret = -EINVAL;
+-		dma_buf_put(node->dma_buf);
+-		return ret;
++		goto err_addr;
+ 	}
++	node->dmabuf_paddr = sg_dma_address(node->dma_sgt->sgl);
+ 
+-	node->dmabuf_paddr = buffer->paddr;
+-	fp = (struct file *)(node->dma_buf->file);
+-	pr_debug("p=0x%llx, ref_count=%lld\n", (uint64_t)node->dmabuf_paddr, file_count(fp));
++	ret = dma_buf_vmap_unlocked(node->dma_buf, &node->dmabuf_map);
++	if (ret) {
++		pr_err("dma_buf_vmap failed\n");
++		goto err_addr;
++	}
++	node->dmabuf_vaddr = node->dmabuf_map.vaddr;
++	pr_debug("v=0x%llx p=0x%llx\n", (uint64_t)node->dmabuf_vaddr, node->dmabuf_paddr);
++
++	ret = dma_buf_begin_cpu_access(node->dma_buf, DMA_BIDIRECTIONAL);
++	if (ret)
++		goto err_access;
+ 
+ 	// Check parameters
+ 	header = (struct dma_hdr_t *)node->dmabuf_vaddr;
+@@ -339,24 +370,33 @@
+ 	}
+ 
+ 	if (node->dmabuf_paddr & 0xFFF) {
+-		pr_err("error: dmabuf_paddr=0x%p\n", node->dmabuf_paddr);
++		pr_err("error: dmabuf_paddr=0x%llx\n", node->dmabuf_paddr);
+ 	}
+ 
+ 	return 0;
++
++err_access:
++	dma_buf_vunmap_unlocked(node->dma_buf, &node->dmabuf_map);
++err_addr:
++	dma_buf_unmap_attachment_unlocked(node->dma_attach, node->dma_sgt, DMA_BIDIRECTIONAL);
++err_map:
++	dma_buf_detach(node->dma_buf, node->dma_attach);
++err_attach:
++	dma_buf_put(node->dma_buf);
++	node->dmabuf_vaddr = NULL;
++	return ret;
+ }
+ 
+ static void cvi_tpu_cleanup_buffer(struct cvi_list_node *node)
+ {
+-	struct file *fp;
+-
+ 	//do nothing while security path
+ 	if (node->tpu_path == TPU_PATH_DESNORMAL) {
+ 
+-		dma_buf_end_cpu_access(node->dma_buf, DMA_TO_DEVICE);
++		dma_buf_end_cpu_access(node->dma_buf, DMA_BIDIRECTIONAL);
++		dma_buf_vunmap_unlocked(node->dma_buf, &node->dmabuf_map);
++		dma_buf_unmap_attachment_unlocked(node->dma_attach, node->dma_sgt, DMA_BIDIRECTIONAL);
++		dma_buf_detach(node->dma_buf, node->dma_attach);
+ 		dma_buf_put(node->dma_buf);
+-		fp = (struct file *)(node->dma_buf->file);
+-		pr_debug("ref_count=%lld\n", file_count(fp));
+-
+ 	}
+ }
+ 
+@@ -939,13 +979,13 @@
+ 		goto err_attach;
+ 	}
+ 
+-	sgt = dma_buf_map_attachment(attachment, direction);
++	sgt = dma_buf_map_attachment_unlocked(attachment, direction);
+ 	if (IS_ERR(sgt)) {
+ 		ret = -EINVAL;
+ 		goto err_map;
+ 	}
+ 
+-	dma_buf_unmap_attachment(attachment, sgt, direction);
++	dma_buf_unmap_attachment_unlocked(attachment, sgt, direction);
+ 
+ err_map:
+ 	dma_buf_detach(dma_buf, attachment);
+@@ -956,6 +996,59 @@
+ 	return ret;
+ }
+ 
++/*
++ * forward-port mainline: вернуть физ. адрес dmabuf по fd. Нужно
++ * dma-heap аллокатору рантайма: userspace не достаёт физадрес CMA-буфера
++ * через /proc/self/pagemap (mmap dma-heap это спец-отображение, pagemap
++ * не транслирует). Делаем то же, что prepare_buffer: attach + map +
++ * sg_dma_address.
++ */
++static int cvi_tpu_get_paddr(struct cvi_tpu_device *ndev, unsigned long arg)
++{
++	struct cvi_dmabuf_paddr_arg a;
++	struct dma_buf *dma_buf;
++	struct dma_buf_attachment *attachment;
++	struct sg_table *sgt;
++	int ret = 0;
++
++	if (copy_from_user(&a, (struct cvi_dmabuf_paddr_arg __user *)arg, sizeof(a)))
++		return -EFAULT;
++
++	dma_buf = dma_buf_get(a.fd);
++	if (IS_ERR(dma_buf))
++		return -EINVAL;
++
++	attachment = dma_buf_attach(dma_buf, ndev->dev);
++	if (IS_ERR(attachment)) {
++		ret = -EINVAL;
++		goto err_attach;
++	}
++
++	sgt = dma_buf_map_attachment_unlocked(attachment, DMA_BIDIRECTIONAL);
++	if (IS_ERR(sgt)) {
++		ret = -EINVAL;
++		goto err_map;
++	}
++
++	if (sgt->nents != 1) {
++		pr_err("get_paddr: dmabuf not contiguous (nents=%u)\n", sgt->nents);
++		ret = -EINVAL;
++		goto err_addr;
++	}
++	a.paddr = sg_dma_address(sgt->sgl);
++
++	if (copy_to_user((struct cvi_dmabuf_paddr_arg __user *)arg, &a, sizeof(a)))
++		ret = -EFAULT;
++
++err_addr:
++	dma_buf_unmap_attachment_unlocked(attachment, sgt, DMA_BIDIRECTIONAL);
++err_map:
++	dma_buf_detach(dma_buf, attachment);
++err_attach:
++	dma_buf_put(dma_buf);
++	return ret;
++}
++
+ static int cvi_tpu_cache_flush(struct cvi_tpu_device *ndev, unsigned long arg)
+ {
+ 	int ret = 0;
+@@ -966,11 +1059,12 @@
+ 		dev_err(ndev->dev, "copy c user fail\n");
+ 		return ret;
+ 	}
+-#if (KERNEL_VERSION(5, 10, 0) <= LINUX_VERSION_CODE) && defined(__riscv)
+-	arch_sync_dma_for_device(flush_arg.paddr, flush_arg.size, DMA_TO_DEVICE);
+-#else
+-	__dma_map_area(phys_to_virt(flush_arg.paddr), flush_arg.size, DMA_TO_DEVICE);
+-#endif
++	/*
++	 * forward-port 6.18: arch_sync_dma_for_device() НЕ экспортируется для
++	 * модулей. dma_sync_single_for_device() экспортирован и на riscv без
++	 * IOMMU эквивалентен (paddr == dma_addr). clean: CPU -> устройство.
++	 */
++	dma_sync_single_for_device(ndev->dev, flush_arg.paddr, flush_arg.size, DMA_TO_DEVICE);
+ 
+ 	smp_mb();	/*memory barrier*/
+ 	return 0;
+@@ -987,11 +1081,8 @@
+ 		dev_err(ndev->dev, "copy from user fail\n");
+ 		return ret;
+ 	}
+-#if (KERNEL_VERSION(5, 10, 0) <= LINUX_VERSION_CODE) && defined(__riscv)
+-	arch_sync_dma_for_device(invalidate_arg.paddr, invalidate_arg.size, DMA_FROM_DEVICE);
+-#else
+-	__dma_map_area(phys_to_virt(invalidate_arg.paddr), invalidate_arg.size, DMA_FROM_DEVICE);
+-#endif
++	/* forward-port 6.18: invalidate, устройство -> CPU (см. cvi_tpu_cache_flush). */
++	dma_sync_single_for_cpu(ndev->dev, invalidate_arg.paddr, invalidate_arg.size, DMA_FROM_DEVICE);
+ 
+ 	smp_mb();	/*memory barrier*/
+ 	return 0;
+@@ -1039,6 +1130,10 @@
+ 		ret = cvi_tpu_wait_pio(ndev, arg);
+ 		break;
+ 
++	case CVITPU_GET_PADDR:
++		ret = cvi_tpu_get_paddr(ndev, arg);
++		break;
++
+ 	default:
+ 		return -ENOTTY;
+ 	}
+@@ -1101,7 +1196,8 @@
+ {
+ 	int ret;
+ 
+-	npu_class = class_create(THIS_MODULE, CVI_TPU_CLASS_NAME);
++	/* forward-port 6.18: class_create() потерял аргумент owner в 6.4 */
++	npu_class = class_create(CVI_TPU_CLASS_NAME);
+ 	if (IS_ERR(npu_class)) {
+ 		pr_err("create class failed\n");
+ 		return PTR_ERR(npu_class);
+@@ -1231,7 +1327,8 @@
+ 	return 0;
+ }
+ 
+-static int cvi_tpu_remove(struct platform_device *pdev)
++/* forward-port 6.18: platform_driver .remove теперь возвращает void */
++static void cvi_tpu_remove(struct platform_device *pdev)
+ {
+ 	struct cvi_tpu_device *ndev = platform_get_drvdata(pdev);
+ 	struct cvi_kernel_work *kernel_work = &ndev->kernel_work;
+@@ -1257,7 +1354,6 @@
+ 
+ 	//remove tpu proc
+ 	proc_remove(tpu_proc_dir);
+-	return 0;
+ }
+ 
+ #ifdef CONFIG_PM_SLEEP
+@@ -1306,6 +1402,8 @@
+ };
+ module_platform_driver(cvi_tpu_driver);
+ 
++/* forward-port 6.18: dma_buf_* экспортируются в namespace DMA_BUF */
++MODULE_IMPORT_NS("DMA_BUF");
+ MODULE_AUTHOR("Wellken Chen<wellken.chen@cvitek.com.tw>");
+ MODULE_DESCRIPTION("Cvitek SoC TPU driver");
+ MODULE_LICENSE("GPL");
+--- a/hal/mars/tpu_platform.c
++++ b/hal/mars/tpu_platform.c
+@@ -11,7 +11,10 @@
+ #include <linux/delay.h>
+ #include <linux/clk.h>
+ #include <linux/reset.h>
+-#include <linux/streamline_annotate.h>
++/* forward-port 6.18: streamline_annotate.h это ARM DS-5 профайлинг,
++ * в mainline отсутствует. Макросы PLATTAG_* в этом файле уже отключены
++ * (#if 0), поэтому include просто убран.
++ */
+ #include <linux/clk.h>
+ #include <asm/cacheflush.h>
+ 

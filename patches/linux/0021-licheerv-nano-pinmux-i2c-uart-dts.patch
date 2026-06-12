@@ -1,0 +1,240 @@
+Pinmux I2C1/I2C3 и UART1/UART2 через pinctrl в board-DTS вместо runtime
+devmem-сервисов (setup-i2c-pinmux.service, setup-uart-pinmux.service).
+
+I2C1/I2C3 (func2 падов SD1_D3/D0/CMD/CLK) только на B/E: на W/WE эти пады
+это шина SDIO Wi-Fi (AIC8800), их remux отрезает радиочип от SoC
+(регрессия 2026-06-11). На W/WE узлы i2c1/i2c3 отключаются.
+UART1 (func6 падов JTAG_CPU_TMS/TCK) и UART2 (func2 падов IIC0_SCL/SDA)
+на всех четырёх вариантах.
+
+Для I2C-групп включён bias-pull-up: дефолт конфига пада 0x48 подтяжек не
+содержит, и на пустой шине designware уходит в controller timed out
+(замер на железе W/nano-e 2026-06-11; с подтяжками скан мгновенный).
+
+Оформлено оверрайдами по ссылкам на узлы в конце board-файлов (идиома
+0018): патч зависит только от факта существования узлов, не от строк.
+
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-b.dts
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-b.dts
+@@ -256,3 +256,63 @@
+ 	/delete-property/ linux,default-trigger;
+ 	default-state = "off";
+ };
++
++/* Pinmux I2C1/I2C3 (2x14 header) и UART1/UART2 через pinctrl.
++ * Заменяет runtime devmem-сервисы setup-i2c-pinmux/setup-uart-pinmux.
++ * I2C1/I2C3 живут на падах SD1_D3/D0/CMD/CLK и существуют только на
++ * B/E: на W/WE эти пады заняты шиной SDIO Wi-Fi (AIC8800). */
++&pinctrl {
++	i2c1_cfg: i2c1-cfg {
++		i2c1-pins {
++			pinmux = <PINMUX(PIN_SD1_D3, 2)>,
++				 <PINMUX(PIN_SD1_D0, 2)>;
++			bias-pull-up;
++			power-source = <3300>;
++		};
++	};
++
++	i2c3_cfg: i2c3-cfg {
++		i2c3-pins {
++			pinmux = <PINMUX(PIN_SD1_CMD, 2)>,
++				 <PINMUX(PIN_SD1_CLK, 2)>;
++			bias-pull-up;
++			power-source = <3300>;
++		};
++	};
++
++	uart1_cfg: uart1-cfg {
++		uart1-pins {
++			pinmux = <PINMUX(PIN_JTAG_CPU_TMS, 6)>,
++				 <PINMUX(PIN_JTAG_CPU_TCK, 6)>;
++			power-source = <3300>;
++		};
++	};
++
++	uart2_cfg: uart2-cfg {
++		uart2-pins {
++			pinmux = <PINMUX(PIN_IIC0_SCL, 2)>,
++				 <PINMUX(PIN_IIC0_SDA, 2)>;
++			power-source = <3300>;
++		};
++	};
++};
++
++&i2c1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&i2c1_cfg>;
++};
++
++&i2c3 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&i2c3_cfg>;
++};
++
++&uart1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&uart1_cfg>;
++};
++
++&uart2 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&uart2_cfg>;
++};
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-e.dts
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-e.dts
+@@ -272,3 +272,63 @@
+ 	/delete-property/ linux,default-trigger;
+ 	default-state = "off";
+ };
++
++/* Pinmux I2C1/I2C3 (2x14 header) и UART1/UART2 через pinctrl.
++ * Заменяет runtime devmem-сервисы setup-i2c-pinmux/setup-uart-pinmux.
++ * I2C1/I2C3 живут на падах SD1_D3/D0/CMD/CLK и существуют только на
++ * B/E: на W/WE эти пады заняты шиной SDIO Wi-Fi (AIC8800). */
++&pinctrl {
++	i2c1_cfg: i2c1-cfg {
++		i2c1-pins {
++			pinmux = <PINMUX(PIN_SD1_D3, 2)>,
++				 <PINMUX(PIN_SD1_D0, 2)>;
++			bias-pull-up;
++			power-source = <3300>;
++		};
++	};
++
++	i2c3_cfg: i2c3-cfg {
++		i2c3-pins {
++			pinmux = <PINMUX(PIN_SD1_CMD, 2)>,
++				 <PINMUX(PIN_SD1_CLK, 2)>;
++			bias-pull-up;
++			power-source = <3300>;
++		};
++	};
++
++	uart1_cfg: uart1-cfg {
++		uart1-pins {
++			pinmux = <PINMUX(PIN_JTAG_CPU_TMS, 6)>,
++				 <PINMUX(PIN_JTAG_CPU_TCK, 6)>;
++			power-source = <3300>;
++		};
++	};
++
++	uart2_cfg: uart2-cfg {
++		uart2-pins {
++			pinmux = <PINMUX(PIN_IIC0_SCL, 2)>,
++				 <PINMUX(PIN_IIC0_SDA, 2)>;
++			power-source = <3300>;
++		};
++	};
++};
++
++&i2c1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&i2c1_cfg>;
++};
++
++&i2c3 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&i2c3_cfg>;
++};
++
++&uart1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&uart1_cfg>;
++};
++
++&uart2 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&uart2_cfg>;
++};
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-w.dts
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-w.dts
+@@ -314,3 +314,43 @@
+ 	/delete-property/ linux,default-trigger;
+ 	default-state = "off";
+ };
++
++/* Pinmux UART1/UART2 через pinctrl. Заменяет runtime devmem-сервис
++ * setup-uart-pinmux. I2C1/I2C3 здесь отключены: их пады
++ * SD1_D3/D0/CMD/CLK это шина SDIO Wi-Fi (см. sdhci1_cfg), remux
++ * отрезает радиочип от SoC (регрессия 2026-06-11). */
++&pinctrl {
++	uart1_cfg: uart1-cfg {
++		uart1-pins {
++			pinmux = <PINMUX(PIN_JTAG_CPU_TMS, 6)>,
++				 <PINMUX(PIN_JTAG_CPU_TCK, 6)>;
++			power-source = <3300>;
++		};
++	};
++
++	uart2_cfg: uart2-cfg {
++		uart2-pins {
++			pinmux = <PINMUX(PIN_IIC0_SCL, 2)>,
++				 <PINMUX(PIN_IIC0_SDA, 2)>;
++			power-source = <3300>;
++		};
++	};
++};
++
++&uart1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&uart1_cfg>;
++};
++
++&uart2 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&uart2_cfg>;
++};
++
++&i2c1 {
++	status = "disabled";
++};
++
++&i2c3 {
++	status = "disabled";
++};
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-we.dts
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-we.dts
+@@ -331,3 +331,43 @@
+ 	/delete-property/ linux,default-trigger;
+ 	default-state = "off";
+ };
++
++/* Pinmux UART1/UART2 через pinctrl. Заменяет runtime devmem-сервис
++ * setup-uart-pinmux. I2C1/I2C3 здесь отключены: их пады
++ * SD1_D3/D0/CMD/CLK это шина SDIO Wi-Fi (см. sdhci1_cfg), remux
++ * отрезает радиочип от SoC (регрессия 2026-06-11). */
++&pinctrl {
++	uart1_cfg: uart1-cfg {
++		uart1-pins {
++			pinmux = <PINMUX(PIN_JTAG_CPU_TMS, 6)>,
++				 <PINMUX(PIN_JTAG_CPU_TCK, 6)>;
++			power-source = <3300>;
++		};
++	};
++
++	uart2_cfg: uart2-cfg {
++		uart2-pins {
++			pinmux = <PINMUX(PIN_IIC0_SCL, 2)>,
++				 <PINMUX(PIN_IIC0_SDA, 2)>;
++			power-source = <3300>;
++		};
++	};
++};
++
++&uart1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&uart1_cfg>;
++};
++
++&uart2 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&uart2_cfg>;
++};
++
++&i2c1 {
++	status = "disabled";
++};
++
++&i2c3 {
++	status = "disabled";
++};

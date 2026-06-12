@@ -1,0 +1,319 @@
+Назначение: активировать audio в board DTS (B/E/W/WE) и добавить
+simple-audio-card узел для линковки I2S контроллера с codec'ами.
+
+Phase 4 audio bring-up. После Phase 2 (DT-узлы добавлены в cv180x.dtsi)
+и Phase 3 (mainline drivers backport), активирую audio peripherals на
+уровне board DTS чтобы drivers их подцепили.
+
+Активируются:
+  &dmamux     DMA router (нужен для I2S DMA channels)
+  &i2s1       I2S/TDM controller (общий cpu DAI для capture и playback)
+  &sound_adc  internal ADC codec (микрофон LMA2718T421)
+  &sound_dac  internal DAC codec (динамик через AW8010A)
+
+Добавляется новый узел `sound` (simple-audio-card) с двумя DAI links:
+  link@0: capture path  это i2s1 ↔ sound_adc (микрофон)
+  link@1: playback path это i2s1 ↔ sound_dac (динамик)
+
+Оба link'а через один и тот же I2S1 controller (CV1800B позволяет
+duplex через i2s1). I2S2 пока не активирован, поскольку mainline
+commit message предупреждает: "I2S2 output pins cannot be enabled via
+pinctrl alone, due to SoC design constraints, the output path becomes
+functional only after additional vendor-specific register programming".
+
+Известные ограничения этого patch:
+1. AW8010A enable GPIO (GPIOA[15]=SPK_EN) НЕ настроен в DT. Без
+   ручного `gpioset` или ALSA mixer'а speaker amp останется выключенным.
+   Сейчас приоритет это capture путь (LMA2718T421 mic), playback можно
+   докрутить позже через regulator-fixed или ALSA control.
+2. mainline cv1800b drivers поддерживают только fixed 48 kHz, S16_LE.
+3. Внутри SoC routing analog mic → ADC и DAC → analog speaker out
+   жёсткий в hardware, не требует pinctrl настройки.
+
+Применяется через:
+    git -C src/linux apply patches/linux/0010-licheerv-nano-audio-activate.patch
+
+После применения board DTS компилируется и при probe drivers создают
+ALSA card `licheerv-nano` с capture и playback substreams. Реально
+работает только capture (по причинам выше).
+
+Ожидаемые ALSA устройства после boot:
+    /proc/asound/cards   licheerv-nano [licheerv-nano]
+    /dev/snd/pcmC0D0p    playback substream
+    /dev/snd/pcmC0D0c    capture substream
+    arecord -Dhw:0,0 -d 3 -r 48000 -f S16_LE -c 2 /tmp/test.wav
+
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-b.dts
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-b.dts
+@@ -155,3 +155,65 @@
+ &usb {
+ 	status = "okay";
+ };
++
++&dmac {
++	status = "okay";
++};
++
++&dmamux {
++	status = "okay";
++};
++
++&i2s0 {
++	status = "okay";
++};
++
++&i2s3 {
++	status = "okay";
++};
++
++&sound_adc {
++	status = "okay";
++};
++
++&sound_dac {
++	status = "okay";
++};
++
++/ {
++	sound {
++		compatible = "simple-audio-card";
++		simple-audio-card,name = "licheerv-nano";
++		simple-audio-card,mclk-fs = <256>;
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		simple-audio-card,dai-link@0 {
++			reg = <0>;
++			format = "i2s";
++			bitclock-master = <&capture_codec>;
++			frame-master = <&capture_codec>;
++			cpu {
++				sound-dai = <&i2s0>;
++				system-clock-frequency = <12288000>;
++			};
++			capture_codec: codec {
++				sound-dai = <&sound_adc>;
++			};
++		};
++
++		simple-audio-card,dai-link@1 {
++			reg = <1>;
++			format = "i2s";
++			bitclock-master = <&playback_cpu>;
++			frame-master = <&playback_cpu>;
++			playback_cpu: cpu {
++				sound-dai = <&i2s3>;
++				system-clock-frequency = <12288000>;
++			};
++			codec {
++				sound-dai = <&sound_dac>;
++			};
++		};
++	};
++};
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-e.dts
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-e.dts
+@@ -171,3 +171,65 @@
+ &usb {
+ 	status = "okay";
+ };
++
++&dmac {
++	status = "okay";
++};
++
++&dmamux {
++	status = "okay";
++};
++
++&i2s0 {
++	status = "okay";
++};
++
++&i2s3 {
++	status = "okay";
++};
++
++&sound_adc {
++	status = "okay";
++};
++
++&sound_dac {
++	status = "okay";
++};
++
++/ {
++	sound {
++		compatible = "simple-audio-card";
++		simple-audio-card,name = "licheerv-nano";
++		simple-audio-card,mclk-fs = <256>;
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		simple-audio-card,dai-link@0 {
++			reg = <0>;
++			format = "i2s";
++			bitclock-master = <&capture_codec>;
++			frame-master = <&capture_codec>;
++			cpu {
++				sound-dai = <&i2s0>;
++				system-clock-frequency = <12288000>;
++			};
++			capture_codec: codec {
++				sound-dai = <&sound_adc>;
++			};
++		};
++
++		simple-audio-card,dai-link@1 {
++			reg = <1>;
++			format = "i2s";
++			bitclock-master = <&playback_cpu>;
++			frame-master = <&playback_cpu>;
++			playback_cpu: cpu {
++				sound-dai = <&i2s3>;
++				system-clock-frequency = <12288000>;
++			};
++			codec {
++				sound-dai = <&sound_dac>;
++			};
++		};
++	};
++};
+
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-w.dts
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-w.dts
+@@ -214,3 +214,65 @@
+ &usb {
+ 	status = "okay";
+ };
++
++&dmac {
++	status = "okay";
++};
++
++&dmamux {
++	status = "okay";
++};
++
++&i2s0 {
++	status = "okay";
++};
++
++&i2s3 {
++	status = "okay";
++};
++
++&sound_adc {
++	status = "okay";
++};
++
++&sound_dac {
++	status = "okay";
++};
++
++/ {
++	sound {
++		compatible = "simple-audio-card";
++		simple-audio-card,name = "licheerv-nano";
++		simple-audio-card,mclk-fs = <256>;
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		simple-audio-card,dai-link@0 {
++			reg = <0>;
++			format = "i2s";
++			bitclock-master = <&capture_codec>;
++			frame-master = <&capture_codec>;
++			cpu {
++				sound-dai = <&i2s0>;
++				system-clock-frequency = <12288000>;
++			};
++			capture_codec: codec {
++				sound-dai = <&sound_adc>;
++			};
++		};
++
++		simple-audio-card,dai-link@1 {
++			reg = <1>;
++			format = "i2s";
++			bitclock-master = <&playback_cpu>;
++			frame-master = <&playback_cpu>;
++			playback_cpu: cpu {
++				sound-dai = <&i2s3>;
++				system-clock-frequency = <12288000>;
++			};
++			codec {
++				sound-dai = <&sound_dac>;
++			};
++		};
++	};
++};
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-we.dts
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-we.dts
+@@ -230,3 +230,65 @@
+ &usb {
+ 	status = "okay";
+ };
++
++&dmac {
++	status = "okay";
++};
++
++&dmamux {
++	status = "okay";
++};
++
++&i2s0 {
++	status = "okay";
++};
++
++&i2s3 {
++	status = "okay";
++};
++
++&sound_adc {
++	status = "okay";
++};
++
++&sound_dac {
++	status = "okay";
++};
++
++/ {
++	sound {
++		compatible = "simple-audio-card";
++		simple-audio-card,name = "licheerv-nano";
++		simple-audio-card,mclk-fs = <256>;
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		simple-audio-card,dai-link@0 {
++			reg = <0>;
++			format = "i2s";
++			bitclock-master = <&capture_codec>;
++			frame-master = <&capture_codec>;
++			cpu {
++				sound-dai = <&i2s0>;
++				system-clock-frequency = <12288000>;
++			};
++			capture_codec: codec {
++				sound-dai = <&sound_adc>;
++			};
++		};
++
++		simple-audio-card,dai-link@1 {
++			reg = <1>;
++			format = "i2s";
++			bitclock-master = <&playback_cpu>;
++			frame-master = <&playback_cpu>;
++			playback_cpu: cpu {
++				sound-dai = <&i2s3>;
++				system-clock-frequency = <12288000>;
++			};
++			codec {
++				sound-dai = <&sound_dac>;
++			};
++		};
++	};
++};
+

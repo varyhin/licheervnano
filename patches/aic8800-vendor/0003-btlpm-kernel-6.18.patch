@@ -1,0 +1,113 @@
+Назначение: backport AIC8800 BTLPM модуля под mainline kernel 6.18.29.
+
+BTLPM (Bluetooth Low Power Management) написан под vendor SDK на базе kernel
+5.10. В 6.x был полностью удалён legacy GPIO API и переименован timer API,
+поэтому из коробки vendor source не собирается. Этот патч добавляет минимальный
+compat shim чтобы модуль скомпилировался под 6.18.
+
+Состав:
+- aic8800_btlpm/aic_btlpm_kernel_compat.h (новый)
+    Compat shim'ы через #define и static inline:
+    - del_timer -> timer_delete (6.10+)
+    - of_get_named_gpio_flags заменён stub-обёрткой через of_get_named_gpio
+      (6.6+ удалили оригинал). flags не заполняются: btlpm не probe'тся без
+      vendor DT-узла compatible="allwinner,sunxi-btlpm", которого у нас нет
+    - devm_gpio_request / devm_gpio_free заменены на legacy gpio_request /
+      gpio_free (6.0+ удалили devm-варианты)
+    - enum of_gpio_flags / OF_GPIO_ACTIVE_LOW определены локально
+- aic8800_btlpm/Makefile
+    ccflags-y += -include $(src)/aic_btlpm_kernel_compat.h для автоматического
+    подключения shim во все .c файлы модуля.
+
+Runtime замечание: btlpm активируется только при наличии DT-узла vendor sunxi
+(Allwinner). У нас SG2002 такого узла нет, поэтому модуль грузится но не
+probes. Это OK для нашего use case: hci0 поднимается через btsdio в
+aic8800_fdrv.ko (см. patches 0001/0002), btlpm нужен только для опционального
+power management через rfkill интерфейс.
+
+Проверено: `aic8800_btlpm.ko` 29904 байт (stripped) под 6.18.29 RISC-V с
+depends=rfkill,aic8800_bsp.
+
+--- a/aic8800_btlpm/aic_btlpm_kernel_compat.h	1970-01-01 03:00:00.000000000 +0300
++++ b/aic8800_btlpm/aic_btlpm_kernel_compat.h	2026-05-26 14:19:23.484024834 +0300
+@@ -0,0 +1,70 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * kernel 6.18 compat shim для AIC8800 BTLPM модуля.
++ *
++ * AIC8800 BTLPM (Bluetooth Low Power Management) написан под vendor SDK
++ * на базе kernel 5.10. К kernel 6.x был удалён legacy GPIO API
++ * (devm_gpio_request, of_get_named_gpio_flags, OF_GPIO_ACTIVE_LOW) и
++ * переименован timer API (del_timer -> timer_delete). Этот header даёт
++ * минимальные stub'ы чтобы код компилировался под 6.18.
++ *
++ * Runtime btlpm не активируется без DT-узла compatible="allwinner,sunxi-btlpm"
++ * (наш SG2002 такого узла не имеет), поэтому stub-реализация GPIO достаточна.
++ *
++ * Подключается через ccflags-y += -include $(src)/aic_btlpm_kernel_compat.h
++ * в Makefile.
++ */
++
++#ifndef AIC_BTLPM_KERNEL_COMPAT_H
++#define AIC_BTLPM_KERNEL_COMPAT_H
++
++#include <linux/version.h>
++#include <linux/timer.h>
++#include <linux/gpio.h>
++#include <linux/of.h>
++#include <linux/of_gpio.h>
++
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 10, 0)
++/* del_timer удалён, теперь только timer_delete */
++#define del_timer(t)		timer_delete(t)
++#endif
++
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
++/* of_get_named_gpio_flags и enum of_gpio_flags / OF_GPIO_ACTIVE_LOW удалены.
++ * Stub возвращает корректный gpio через сохранённый of_get_named_gpio,
++ * flags не заполняются (всегда 0 = ACTIVE_HIGH в нашем коде).
++ * Этот код не выполняется на runtime без vendor DT-узла, так что точные
++ * flags не нужны. */
++enum of_gpio_flags {
++	OF_GPIO_ACTIVE_LOW = 0x1,
++};
++
++static inline int of_get_named_gpio_flags(struct device_node *np,
++					   const char *list_name, int index,
++					   enum of_gpio_flags *flags)
++{
++	if (flags)
++		*flags = 0;
++	return of_get_named_gpio(np, list_name, index);
++}
++#endif
++
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0)
++/* devm_gpio_request / devm_gpio_free удалены из mainline (legacy API).
++ * Современная замена это gpiod_* API через devm_fwnode_gpiod_get. Для нашего
++ * случая (btlpm не probe'тся без vendor DT) достаточно non-devm обёрток. */
++static inline int devm_gpio_request(struct device *dev, unsigned int gpio,
++				     const char *label)
++{
++	(void)dev;
++	return gpio_request(gpio, label);
++}
++
++static inline void devm_gpio_free(struct device *dev, unsigned int gpio)
++{
++	(void)dev;
++	gpio_free(gpio);
++}
++#endif
++
++#endif /* AIC_BTLPM_KERNEL_COMPAT_H */
+--- a/aic8800_btlpm/Makefile	2026-05-26 14:33:37.915469738 +0300
++++ b/aic8800_btlpm/Makefile	2026-05-26 14:17:39.543420650 +0300
+@@ -4,5 +4,7 @@
+
+ ccflags-y += -I$(srctree)/$(src)/../aic8800_bsp
+
++# kernel 6.18 compat shims (см. aic_btlpm_kernel_compat.h)
++ccflags-y += -include $(src)/aic_btlpm_kernel_compat.h
+ # Platform support list
+ CONFIG_PLATFORM_ROCKCHIP ?= n

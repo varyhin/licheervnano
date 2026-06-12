@@ -1,0 +1,340 @@
+Назначение: добавить kernel builtin driver `cv1800b-ephy-init` для запуска
+внутреннего 10/100M Ethernet PHY на Sophgo CV1800B/SG2002. Driver выполняет
+vendor-specific reset+init sequence (~250 register pokes) и переключает
+MDIO control обратно на ETH_MAC. После этого generic c22 PHY driver
+обнаруживает PHY и phylink validation проходит.
+
+Без этого driver mainline stmmac+phylink на cv1800/sg2002 не работает:
+internal PHY остаётся в shutdown, phy_id читается как 0x0, validation
+падает с -EINVAL. Mainline 6.18.29 binding для cv1800b-dwmac есть, но
+сам PHY-driver upstream отсутствует (RFC от Inochi Amaoto не покрывает
+init seq, только DTS).
+
+Backport источников:
+- `drivers/net/phy/cv1800b-ephy-init.c` адаптирован из
+  sipeed/LicheeRV-Nano-Build, `linux_5.10/drivers/net/phy/cvitek.c`,
+  функция `cv182xa_phy_config_init`. Без EFUSE-tuning (mainline нет
+  cvi_efuse_read_from_shadow), используются дефолтные значения.
+  Reset release (shutdown через base, dig_rst_n/ana_rst_n через wrap)
+  взят из закомментированных строк vendor cvitek.c с пометкой "do this
+  in board.c" и из vendor `dwmac-cvitek.c::bm_eth_reset_phy()`.
+- DT-узел `ephy-init@3009000` в `cv180x.dtsi` для привязки driver.
+- Kconfig + Makefile для сборки.
+
+ОБЯЗАТЕЛЬНО собирать как builtin (CONFIG_CV1800B_EPHY_INIT=y), не как
+модуль. Builtin даёт device_initcall (init level 6), что гарантирует probe
+ephy-init driver ДО mdio-mux-mmioreg и stmmac. При =m модули грузятся
+udev coldplug асинхронно с возможной гонкой.
+
+Top-wrap regs на 0x03009800 пересекается с mdio-mux@3009800 (driver
+mdio-mux-mmioreg уже описан в cv180x.dtsi с reg = <0x3009800 0x4>),
+поэтому ephy-init driver маппит wrap через `devm_ioremap` без
+`request_mem_region` (иначе resource conflict).
+
+Применяется поверх chистого snapshot src/linux v6.18.29 ПОСЛЕ patches/linux/0002:
+    git -C src/linux apply patches/linux/0002-cv180x-fix-ethernet-phy-mode.patch
+    git -C src/linux apply patches/linux/0003-cv1800b-ephy-init-driver.patch
+
+Активируется в board-DTS для вариантов с Ethernet (E, WE) через
+&ephy_init { status = "okay"; }; (см. hunk e.dts в
+patches/linux/0001-licheerv-nano-dts-b-e-w-extensions.patch).
+
+Подтверждено на железе LicheeRV Nano E 2026-05-25: end0 поднимается на
+100 Mbps Full-duplex, DHCP получает IP, ping проходит.
+
+diff -urN a/arch/riscv/boot/dts/sophgo/cv180x.dtsi b/arch/riscv/boot/dts/sophgo/cv180x.dtsi
+--- a/arch/riscv/boot/dts/sophgo/cv180x.dtsi	2026-05-25 16:16:54.499470653 +0300
++++ b/arch/riscv/boot/dts/sophgo/cv180x.dtsi	2026-05-25 16:16:54.511474221 +0300
+@@ -31,6 +31,12 @@
+ 			#reset-cells = <1>;
+ 		};
+ 
++		ephy_init: ephy-init@3009000 {
++			compatible = "sophgo,cv1800b-ephy-init";
++			reg = <0x3009000 0x80>;
++			status = "disabled";
++		};
++
+ 		mdio: mdio-mux@3009800 {
+ 			compatible = "mdio-mux-mmioreg", "mdio-mux";
+ 			reg = <0x3009800 0x4>;
+diff -urN a/drivers/net/phy/cv1800b-ephy-init.c b/drivers/net/phy/cv1800b-ephy-init.c
+--- a/drivers/net/phy/cv1800b-ephy-init.c	1970-01-01 03:00:00.000000000 +0300
++++ b/drivers/net/phy/cv1800b-ephy-init.c	2026-05-25 16:16:54.515475410 +0300
+@@ -0,0 +1,245 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++/*
++ * Sophgo CV1800B / SG2002 internal Ethernet PHY init driver.
++ *
++ * Mainline backport of vendor cv182xa_phy_config_init from
++ * sipeed/LicheeRV-Nano-Build linux_5.10/drivers/net/phy/cvitek.c
++ * (без вызовов EFUSE API, используются дефолтные значения).
++ *
++ * Без vendor-specific init internal 10/100M PHY не отвечает на MDIO,
++ * generic c22 PHY driver получает phy_id = 0, phylink validation падает
++ * с -EINVAL. Этот platform driver привязывается к
++ * "sophgo,cv1800b-ephy-init", выполняет init аналоговой и цифровой
++ * части PHY через APB-direct (база 0x03009000, top-wrap 0x03009800),
++ * затем переключает MDIO control обратно на ETH_MAC. После probe
++ * generic c22 PHY driver успешно читает phy_id и speeds.
++ *
++ * Должен быть builtin (CONFIG_CV1800B_EPHY_INIT=y), чтобы probe прошёл
++ * через device_initcall ДО mdio-mux-mmioreg и stmmac.
++ */
++
++#include <linux/delay.h>
++#include <linux/init.h>
++#include <linux/io.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++
++/*
++ * Top-wrap regs на 0x03009800 пересекается по адресу с mdio-mux@3009800
++ * (mdio-mux-mmioreg), поэтому маппим без request_mem_region.
++ */
++#define EPHY_WRAP_PHYS	0x03009800
++#define EPHY_WRAP_LEN	0x8
++
++static void cv1800b_ephy_init(void __iomem *base, void __iomem *wrap)
++{
++	/* Release shutdown/reset bits (нижние 2 бита первого regа base).
++	 * Аналогично vendor bm_eth_reset_phy() в dwmac-cvitek.c.
++	 * Без этого PHY core остаётся в shutdown и любая запись в EPHY
++	 * аналоговые регистры вешает APB шину.
++	 */
++	writel(readl(base) & ~0x3u, base);
++	mdelay(2);
++
++	/* Full PHY reset sequence через top-wrap register (0x3009800).
++	 * Vendor cvitek.c имел эту секцию закомментированной с пометкой
++	 * "do this in board.c" — мы делаем здесь.
++	 *
++	 * wrap[0] = shutdown (0 = released), wrap[1] = ana_rst_n,
++	 * wrap[2] = dig_rst_n. По reset все три бита = 0 (всё в shutdown/reset).
++	 */
++	writel(0x0900, wrap);		/* Release shutdown: bit[0]=0 */
++	writel(0x0904, wrap);		/* Release dig_rst_n: bit[2]=1 */
++	mdelay(10);
++
++	/* APB direct access вместо MAC MDIO */
++	writel(0x0001, wrap + 4);
++	writel(0x0000, base + 0x7c);
++
++	/* ANA INIT (PD/EN), switch to MII-page5 */
++	writel(0x0500, base + 0x7c);
++	writel(0x0c00, base + 0x40);	/* Release ANA_PD */
++	writel(0x0c7e, base + 0x40);	/* Release ANA_EN */
++	mdelay(1);
++
++	/* Release ana_rst_n: bit[1]=1, итог wrap = 0x0906 */
++	writel(0x0906, wrap);
++
++	/* Switch обратно на page 5 для последующих ANA pokes */
++	writel(0x0500, base + 0x7c);
++
++	/* Дефолтные EFUSE-related значения (vendor использует EFUSE tuning,
++	 * мы используем дефолты для bring-up).
++	 */
++	writel(0x5a5a, base + 0x64);	/* TX_Itune */
++	writel(0x0000, base + 0x54);	/* Echo I */
++	writel(0x0bb0, base + 0x58);	/* TX Rterm */
++
++	/* ETH 100BaseT параметры */
++	writel(0x0c10, base + 0x5c);
++	writel(0x0003, base + 0x68);
++	writel(0x0000, base + 0x54);
++
++	/* MII-page16: MLT3 positive phase */
++	writel(0x1000, base + 0x7c);
++	writel(0x1000, base + 0x68);
++	writel(0x3020, base + 0x6c);
++	writel(0x5040, base + 0x70);
++	writel(0x7060, base + 0x74);
++	writel(0x1708, base + 0x58);
++	writel(0x3827, base + 0x5c);
++	writel(0x5748, base + 0x60);
++	writel(0x7867, base + 0x64);
++
++	/* MII-page17: MLT3 negative phase */
++	writel(0x1100, base + 0x7c);
++	writel(0x9080, base + 0x40);
++	writel(0xb0a0, base + 0x44);
++	writel(0xd0c0, base + 0x48);
++	writel(0xf0e0, base + 0x4c);
++	writel(0x9788, base + 0x50);
++	writel(0xb8a7, base + 0x54);
++	writel(0xd7c8, base + 0x58);
++	writel(0xf8e7, base + 0x5c);
++
++	/* MII-page5: TX Rterm enable + RX VCM */
++	writel(0x0500, base + 0x7c);
++	writel(readl(base + 0x40) | 0x0001, base + 0x40);
++	writel(readl(base + 0x4c) | 0x820, base + 0x4c);
++
++	/* MII-page10: Link pulse table */
++	writel(0x0a00, base + 0x7c);
++	writel(0x3e00, base + 0x40);
++	writel(0x7864, base + 0x44);
++	writel(0x6470, base + 0x48);
++	writel(0x5f62, base + 0x4c);
++	writel(0x5a5a, base + 0x50);
++	writel(0x5458, base + 0x54);
++	writel(0xb23a, base + 0x58);
++	writel(0x94a0, base + 0x5c);
++	writel(0x9092, base + 0x60);
++	writel(0x8a8e, base + 0x64);
++	writel(0x8688, base + 0x68);
++	writel(0x8484, base + 0x6c);
++	writel(0x0082, base + 0x70);
++
++	/* MII-page11: TP_IDLE */
++	writel(0x0b00, base + 0x7c);
++	writel(0x5252, base + 0x40);
++	writel(0x5252, base + 0x44);
++	writel(0x4b52, base + 0x48);
++	writel(0x3d47, base + 0x4c);
++	writel(0xaa99, base + 0x50);
++	writel(0x989e, base + 0x54);
++	writel(0x9395, base + 0x58);
++	writel(0x9091, base + 0x5c);
++	writel(0x8e8f, base + 0x60);
++	writel(0x8d8e, base + 0x64);
++	writel(0x8c8c, base + 0x68);
++	writel(0x8b8b, base + 0x6c);
++	writel(0x008a, base + 0x70);
++
++	/* MII-page13: 10BaseT Data */
++	writel(0x0d00, base + 0x7c);
++	writel(0x1e0a, base + 0x40);
++	writel(0x3862, base + 0x44);
++	writel(0x1e62, base + 0x48);
++	writel(0x2a08, base + 0x4c);
++	writel(0x244c, base + 0x50);
++	writel(0x1a44, base + 0x54);
++	writel(0x061c, base + 0x58);
++
++	/* MII-page14 */
++	writel(0x0e00, base + 0x7c);
++	writel(0x2d30, base + 0x40);
++	writel(0x3470, base + 0x44);
++	writel(0x0648, base + 0x48);
++	writel(0x261c, base + 0x4c);
++	writel(0x3160, base + 0x50);
++	writel(0x2d5e, base + 0x54);
++
++	/* MII-page15 */
++	writel(0x0f00, base + 0x7c);
++	writel(0x2922, base + 0x40);
++	writel(0x366e, base + 0x44);
++	writel(0x0752, base + 0x48);
++	writel(0x2556, base + 0x4c);
++	writel(0x2348, base + 0x50);
++	writel(0x0c30, base + 0x54);
++
++	/* MII-page16: MLT3 */
++	writel(0x1000, base + 0x7c);
++	writel(0x1e08, base + 0x40);
++	writel(0x3868, base + 0x44);
++	writel(0x1462, base + 0x48);
++	writel(0x1a0e, base + 0x4c);
++	writel(0x305e, base + 0x50);
++	writel(0x2f62, base + 0x54);
++
++	/* MII-page1: LED config */
++	writel(0x0100, base + 0x7c);
++	writel(readl(base + 0x68) & ~0x0f00, base + 0x68);
++
++	/* MII-page19: AGC swing */
++	writel(0x1300, base + 0x7c);
++	writel(0x0012, base + 0x58);
++	writel(0x6848, base + 0x5c);
++
++	/* MII-page18: LPF/HPF (CV180x "phobos" вариант) */
++	writel(0x1200, base + 0x7c);
++	writel(0x0801, base + 0x48);
++	writel(0x1717, base + 0x4c);
++	writel(0x0108, base + 0x5c);
++	writel(0x3afc, base + 0x50);
++	writel(0x08d3, base + 0x54);
++	writel(0x00fb, base + 0x60);
++
++	/* Switch to MII-page0, EPHY start auto-neg */
++	writel(0x0000, base + 0x7c);
++	writel(0x090e, wrap);
++
++	/* EPHY на reset уходит в half-duplex, форсируем full-duplex */
++	writel(readl(base) | 0x100, base);
++
++	/* Вернуть контроль MDIO к ETH_MAC */
++	writel(0x0000, wrap + 4);
++}
++
++static int cv1800b_ephy_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	void __iomem *base, *wrap;
++
++	base = devm_platform_ioremap_resource(pdev, 0);
++	if (IS_ERR(base))
++		return PTR_ERR(base);
++
++	wrap = devm_ioremap(dev, EPHY_WRAP_PHYS, EPHY_WRAP_LEN);
++	if (!wrap)
++		return -ENOMEM;
++
++	cv1800b_ephy_init(base, wrap);
++
++	dev_info(dev, "Sophgo CV1800B internal Ethernet PHY initialized\n");
++	return 0;
++}
++
++static const struct of_device_id cv1800b_ephy_of_match[] = {
++	{ .compatible = "sophgo,cv1800b-ephy-init" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, cv1800b_ephy_of_match);
++
++static struct platform_driver cv1800b_ephy_driver = {
++	.probe = cv1800b_ephy_probe,
++	.driver = {
++		.name = "cv1800b-ephy-init",
++		.of_match_table = cv1800b_ephy_of_match,
++	},
++};
++module_platform_driver(cv1800b_ephy_driver);
++
++MODULE_DESCRIPTION("Sophgo CV1800B/SG2002 internal Ethernet PHY init");
++MODULE_AUTHOR("Backport from vendor cvitek.c");
++MODULE_LICENSE("GPL");
+diff -urN a/drivers/net/phy/Kconfig b/drivers/net/phy/Kconfig
+--- a/drivers/net/phy/Kconfig	2026-05-25 16:16:54.503471842 +0300
++++ b/drivers/net/phy/Kconfig	2026-05-25 16:16:54.515475410 +0300
+@@ -138,6 +138,16 @@
+ 
+ source "drivers/net/phy/aquantia/Kconfig"
+ 
++config CV1800B_EPHY_INIT
++	bool "Sophgo CV1800B/SG2002 internal Ethernet PHY init"
++	depends on OF && HAS_IOMEM
++	help
++	  Vendor-specific init sequence for the internal 10/100M Ethernet
++	  PHY on Sophgo CV1800B/SG2002. Without this driver the PHY does
++	  not respond on the MDIO bus and stmmac+phylink fails to attach
++	  with -EINVAL (phy_id reads as zero). Must be built-in (=y) so
++	  device_initcall runs before mdio-mux-mmioreg and stmmac probe.
++
+ config AX88796B_PHY
+ 	tristate "Asix PHYs"
+ 	help
+diff -urN a/drivers/net/phy/Makefile b/drivers/net/phy/Makefile
+--- a/drivers/net/phy/Makefile	2026-05-25 16:16:54.507473032 +0300
++++ b/drivers/net/phy/Makefile	2026-05-25 16:16:54.515475410 +0300
+@@ -41,6 +41,7 @@
+ endif
+ obj-$(CONFIG_BCM54140_PHY)	+= bcm54140.o
+ obj-$(CONFIG_BCM63XX_PHY)	+= bcm63xx.o
++obj-$(CONFIG_CV1800B_EPHY_INIT)	+= cv1800b-ephy-init.o
+ obj-$(CONFIG_BCM7XXX_PHY)	+= bcm7xxx.o
+ obj-$(CONFIG_BCM84881_PHY)	+= bcm84881.o
+ obj-$(CONFIG_BCM87XX_PHY)	+= bcm87xx.o

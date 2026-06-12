@@ -1,0 +1,168 @@
+Назначение: первая партия compat-патчей для сборки vendor AIC8800 SDIO
+стека под mainline kernel 6.18.29 (vendor source написан под 5.10).
+
+Состав:
+- aic8800_bsp/aic_bsp_driver.c
+    MODULE_IMPORT_NS теперь принимает string literal (6.13+), оборачиваем
+    в условный блок по LINUX_VERSION_CODE.
+- aic8800_fdrv/aic_kernel_compat.h (новый)
+    Compat shim'ы через #define:
+    - del_timer/del_timer_sync → timer_delete/timer_delete_sync (6.10+)
+    - from_timer → timer_container_of (6.16+)
+    - wakeup_source_create/add/remove/destroy → wakeup_source_register/
+      unregister + no-op (6.0+)
+- aic8800_fdrv/Makefile
+    ccflags-y += -include $(src)/aic_kernel_compat.h для автоматического
+    подключения shim во все .c файлы driver.
+- aic8800_fdrv/rwnx_main.c, rwnx_platform.c
+    MODULE_IMPORT_NS quoting (как в aic_bsp_driver.c).
+- aic8800_fdrv/btsdio.c
+    hdev->dev_type убран в 6.9 (single primary HCI type), условно
+    пропускаем строку для kernel >= 6.9.
+
+ПОКА НЕ ИСПРАВЛЕНО (остаётся блокером для fdrv сборки):
+- cfg80211 ops signature changes (rwnx_main.c struct cfg80211_ops):
+  change_beacon → change_ap (struct cfg80211_ap_update), set_monitor_channel
+  получил netdev параметр, get_tx_power/set_tx_power/get_channel получили
+  link_id (int), start_radar_detection и tdls_mgmt тоже расширены.
+- cfg80211_ch_switch_notify, cfg80211_ch_switch_started_notify,
+  cfg80211_cac_event, cfg80211_rx_spurious_frame,
+  cfg80211_rx_unexpected_4addr_frame требуют дополнительных параметров
+  в mainline 6.18.
+
+aic8800_bsp.ko после этого патча собирается без ошибок и регистрируется
+с SDIO alias `sdio:c07v*d*` (готов к binding'у к AIC8800 на SDIO bus).
+aic8800_fdrv.ko требует второго раунда патчей под cfg80211 ops.
+
+Применяется поверх чистого snapshot src/aic8800-vendor:
+    git -C src/aic8800-vendor apply patches/aic8800-vendor/0001-compat-kernel-6.18.patch
+
+diff -urN a/aic8800_bsp/aic_bsp_driver.c b/aic8800_bsp/aic_bsp_driver.c
+--- a/aic8800_bsp/aic_bsp_driver.c	2026-05-25 17:38:13.874587892 +0300
++++ b/aic8800_bsp/aic_bsp_driver.c	2026-05-25 17:38:13.886587437 +0300
+@@ -471,7 +471,9 @@
+ 							msg_hdlrs[MSG_T(msg->id)][MSG_I(msg->id)]);
+ }
+ 
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
++MODULE_IMPORT_NS("VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver");
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
+ MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
+ #endif
+ 
+diff -urN a/aic8800_fdrv/aic_kernel_compat.h b/aic8800_fdrv/aic_kernel_compat.h
+--- a/aic8800_fdrv/aic_kernel_compat.h	1970-01-01 03:00:00.000000000 +0300
++++ b/aic8800_fdrv/aic_kernel_compat.h	2026-05-25 17:38:13.902586831 +0300
+@@ -0,0 +1,61 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/*
++ * Compatibility shims для сборки vendor AIC8800 driver под kernel 6.18.
++ * Vendor source написан под 5.10, в новых ядрах часть API переименована
++ * или удалена. Эти макросы перебрасывают старые имена на новые без
++ * необходимости править каждый вызов в десятках файлов.
++ *
++ * Подключается через ccflags-y += -include $(M)/aic_kernel_compat.h
++ * в Makefile.
++ */
++
++#ifndef AIC_KERNEL_COMPAT_H
++#define AIC_KERNEL_COMPAT_H
++
++#include <linux/version.h>
++
++/* del_timer и del_timer_sync удалены в 6.10:
++ *   "treewide: clean up del_timer/del_timer_sync occurrences"
++ * Заменены на timer_delete и timer_delete_sync.
++ */
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 10, 0)
++#ifndef del_timer
++#define del_timer(t)		timer_delete(t)
++#endif
++#ifndef del_timer_sync
++#define del_timer_sync(t)	timer_delete_sync(t)
++#endif
++#endif
++
++/* from_timer переименован в timer_container_of в 6.16:
++ *   "treewide: switch from from_timer to timer_container_of"
++ */
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 16, 0)
++#ifndef from_timer
++#define from_timer(var, callback_timer, timer_fieldname) \
++	timer_container_of(var, callback_timer, timer_fieldname)
++#endif
++#endif
++
++/* wakeup_source_create/add/remove/destroy удалены в 6.0+,
++ * заменены на wakeup_source_register/unregister, которые
++ * принимают struct device аргументом. Для большинства
++ * вызовов в этом driver устройство не передаётся (NULL),
++ * поэтому шим wrap'ит register с NULL.
++ */
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0)
++#ifndef wakeup_source_create
++#define wakeup_source_create(name)	wakeup_source_register(NULL, (name))
++#endif
++#ifndef wakeup_source_add
++#define wakeup_source_add(ws)		do { (void)(ws); } while (0)
++#endif
++#ifndef wakeup_source_remove
++#define wakeup_source_remove(ws)	do { (void)(ws); } while (0)
++#endif
++#ifndef wakeup_source_destroy
++#define wakeup_source_destroy(ws)	wakeup_source_unregister(ws)
++#endif
++#endif
++
++#endif /* AIC_KERNEL_COMPAT_H */
+diff -urN a/aic8800_fdrv/btsdio.c b/aic8800_fdrv/btsdio.c
+--- a/aic8800_fdrv/btsdio.c	2026-05-25 17:38:13.878587741 +0300
++++ b/aic8800_fdrv/btsdio.c	2026-05-25 17:38:13.902586831 +0300
+@@ -254,7 +254,9 @@
+ 	hdev->bus = HCI_SDIO;
+ 	hci_set_drvdata(hdev, data);
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 9, 0)
+ 	hdev->dev_type = HCI_PRIMARY;
++#endif
+ 
+ 	data->hdev = hdev;
+ 
+diff -urN a/aic8800_fdrv/Makefile b/aic8800_fdrv/Makefile
+--- a/aic8800_fdrv/Makefile	2026-05-25 17:38:13.874587892 +0300
++++ b/aic8800_fdrv/Makefile	2026-05-25 17:38:13.902586831 +0300
+@@ -11,6 +11,9 @@
+ MODULE_NAME = aic8800_fdrv
+ CONFIG_AIC8800_WLAN_SUPPORT = m
+ 
++# kernel 6.18 compat shims (см. aic_kernel_compat.h)
++ccflags-y += -include $(src)/aic_kernel_compat.h
++
+ # Support of bootrom start
+ CONFIG_START_FROM_BOOTROM = y
+ 
+diff -urN a/aic8800_fdrv/rwnx_main.c b/aic8800_fdrv/rwnx_main.c
+--- a/aic8800_fdrv/rwnx_main.c	2026-05-25 17:38:13.878587741 +0300
++++ b/aic8800_fdrv/rwnx_main.c	2026-05-25 17:38:13.894587134 +0300
+@@ -6272,7 +6272,7 @@
+ 
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
+-MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
++MODULE_IMPORT_NS("VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver");
+ #endif
+ 
+ module_init(rwnx_mod_init);
+diff -urN a/aic8800_fdrv/rwnx_platform.c b/aic8800_fdrv/rwnx_platform.c
+--- a/aic8800_fdrv/rwnx_platform.c	2026-05-25 17:38:13.878587741 +0300
++++ b/aic8800_fdrv/rwnx_platform.c	2026-05-25 17:38:13.902586831 +0300
+@@ -548,7 +548,7 @@
+ #endif
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
+-MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
++MODULE_IMPORT_NS("VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver");
+ #endif
+ 
+ #if 0

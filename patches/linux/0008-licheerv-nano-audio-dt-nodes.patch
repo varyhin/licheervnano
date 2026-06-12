@@ -1,0 +1,153 @@
+Назначение: добавить DT-узлы audio (codec + I2S + DMA mux) в cv180x.dtsi
+для поддержки встроенного analog codec'а SG2002 в mainline kernel.
+
+Phase 2 audio bring-up (v2): bindings перенесены с vendor (cvitek,*) на
+upstream mainline формат (sophgo,cv1800b-*), которые попали в mainline
+с commit 75ca8602 "ASoC: sophgo: add CV1800 I2S controllers support"
+(2026-01-28, после v6.18.x stable freeze).
+
+Узлы добавлены со `status = "disabled"`, активируются в board DTS
+B/E/W/WE отдельным patch'ем. Drivers портируются в Phase 3 как новые
+файлы в src/linux/sound/soc/sophgo/ это снимок из mainline 75ca8602.
+
+Добавленные узлы:
+
+  top_misc@3000000 это syscon-обёртка (compatible "sophgo,cv1800-top-misc"
+    + "syscon" + "simple-mfd") над System control regblock 0x3000000.
+    Нужна потому что cv1800b-dmamux driver требует parent с regmap:
+    `device_node_to_regmap(parent->of_node)`. Содержит вложенный:
+
+  dma-router@154 это DMA router (sophgo,cv1800b-dmamux), маршрутизирует
+    8 каналов AXI DMA на peripheral DMA requests. Drivers cv1800b-i2s
+    запрашивают каналы через &dmamux N M (2-cell binding). Уже есть
+    в mainline kernel (drivers/dma/cv1800b-dmamux.c). Offsets 0x154
+    и 0x298 относительные к top_misc regmap (абсолютные адреса
+    0x3000154 и 0x3000298).
+
+  i2s0@4100000 это I2S/TDM controller 0 (sophgo,cv1800b-i2s). RX это
+    capture path к internal ADC. На SG2002 I2S0 разведён жёстко на
+    встроенный ADC, поэтому именно он используется для микрофона
+    (dmamux ch 0, assigned SDMA_AUD0 = 24576000).
+
+  i2s3@4130000 это I2S/TDM controller 3 (sophgo,cv1800b-i2s). TX это
+    playback path к internal DAC. На SG2002 I2S3 разведён жёстко на
+    встроенный DAC + MCLK out (dmamux ch 7, assigned SDMA_AUD3 =
+    24576000).
+
+  i2s1@4110000 + i2s2@4120000 это I2S/TDM controllers 1/2. General-
+    purpose для ВНЕШНИХ кодеков, к встроенному codec не подключены.
+    Добавлены для полноты, в board DTS не активируются.
+
+  sound_adc@300a100 это internal ADC codec (sophgo,cv1800b-sound-adc).
+    Принимает analog input от AUD_AINL_MIC pin (микрофон, моно левый).
+
+  sound_dac@300a000 это internal DAC codec (sophgo,cv1800b-sound-dac).
+    Выдаёт analog output на AUD_AOUTR pin (далее на AW8010A amp).
+
+Ключевой момент (подтверждён на железе 2026-05-28): capture обязан идти
+через i2s0, playback через i2s3. Mainline binding example (Milk-V Duo)
+использует i2s1, но для встроенного микрофона LicheeRV Nano это даёт
+запись чистых нулей. PDM controller не добавлен (onboard mic это
+аналоговый MEMS, не PDM).
+
+Зависимости clocks:
+  CLK_APB_I2S0..3, CLK_SDMA_AUD0..3 это все присутствуют в
+  sophgo,cv1800.h.
+
+Применяется через:
+--- a/arch/riscv/boot/dts/sophgo/cv180x.dtsi
++++ b/arch/riscv/boot/dts/sophgo/cv180x.dtsi
+@@ -397,7 +397,7 @@
+ 		};
+ 
+ 		dmac: dma-controller@4330000 {
+-			compatible = "snps,axi-dma-1.01a";
++			compatible = "sophgo,cv1800b-axi-dma", "snps,axi-dma-1.01a";
+ 			reg = <0x04330000 0x1000>;
+ 			interrupts = <SOC_PERIPHERAL_IRQ(13) IRQ_TYPE_LEVEL_HIGH>;
+ 			clocks = <&clk CLK_SDMA_AXI>, <&clk CLK_SDMA_AXI>;
+@@ -442,5 +442,84 @@
+ 			dr_mode = "otg";
+ 			status = "disabled";
+ 		};
++
++		top_misc: syscon@3000000 {
++			compatible = "sophgo,cv1800-top-misc", "syscon", "simple-mfd";
++			reg = <0x3000000 0x1000>;
++			#address-cells = <1>;
++			#size-cells = <1>;
++			ranges = <0x0 0x3000000 0x1000>;
++
++			dmamux: dma-router@154 {
++				compatible = "sophgo,cv1800b-dmamux";
++				reg = <0x154 0x8>, <0x298 0x4>;
++				#dma-cells = <2>;
++				dma-masters = <&dmac>;
++			};
++		};
++
++		i2s0: i2s@4100000 {
++			compatible = "sophgo,cv1800b-i2s";
++			reg = <0x4100000 0x10000>;
++			clocks = <&clk CLK_APB_I2S0>, <&clk CLK_SDMA_AUD0>;
++			clock-names = "i2s", "mclk";
++			assigned-clocks = <&clk CLK_SDMA_AUD0>;
++			assigned-clock-rates = <24576000>;
++			dmas = <&dmamux 0 1>;
++			dma-names = "rx";
++			#sound-dai-cells = <0>;
++			status = "disabled";
++		};
++
++		i2s1: i2s@4110000 {
++			compatible = "sophgo,cv1800b-i2s";
++			reg = <0x4110000 0x10000>;
++			clocks = <&clk CLK_APB_I2S1>, <&clk CLK_SDMA_AUD1>;
++			clock-names = "i2s", "mclk";
++			assigned-clocks = <&clk CLK_SDMA_AUD1>;
++			assigned-clock-rates = <24576000>;
++			dmas = <&dmamux 2 1>, <&dmamux 3 1>;
++			dma-names = "rx", "tx";
++			#sound-dai-cells = <0>;
++			status = "disabled";
++		};
++
++		i2s3: i2s@4130000 {
++			compatible = "sophgo,cv1800b-i2s";
++			reg = <0x4130000 0x10000>;
++			clocks = <&clk CLK_APB_I2S3>, <&clk CLK_SDMA_AUD3>;
++			clock-names = "i2s", "mclk";
++			assigned-clocks = <&clk CLK_SDMA_AUD3>;
++			assigned-clock-rates = <24576000>;
++			dmas = <&dmamux 7 1>;
++			dma-names = "tx";
++			#sound-dai-cells = <0>;
++			status = "disabled";
++		};
++
++		i2s2: i2s@4120000 {
++			compatible = "sophgo,cv1800b-i2s";
++			reg = <0x4120000 0x10000>;
++			clocks = <&clk CLK_APB_I2S2>, <&clk CLK_SDMA_AUD2>;
++			clock-names = "i2s", "mclk";
++			dmas = <&dmamux 6 1>, <&dmamux 1 1>;
++			dma-names = "rx", "tx";
++			#sound-dai-cells = <0>;
++			status = "disabled";
++		};
++
++		sound_adc: audio-codec@300a100 {
++			compatible = "sophgo,cv1800b-sound-adc";
++			reg = <0x300a100 0x100>;
++			#sound-dai-cells = <0>;
++			status = "disabled";
++		};
++
++		sound_dac: audio-codec@300a000 {
++			compatible = "sophgo,cv1800b-sound-dac";
++			reg = <0x300a000 0x100>;
++			#sound-dai-cells = <0>;
++			status = "disabled";
++		};
+ 	};
+ };

@@ -1,0 +1,38 @@
+Назначение: исправить phy-mode для gmac0 в cv180x.dtsi с "internal" на
+"rmii", чтобы phylink validation в современном stmmac согласовала PHY и
+MAC начал bring-up.
+
+Симптом без этого патча (mainline v6.18.29, dmesg на железе):
+
+    stmmaceth 4070000.ethernet end0: validation of internal with support \
+        0000000,00000000,00000000,00006280 and advertisement \
+        0000000,00000000,00000000,00006280 failed: -EINVAL
+    stmmaceth 4070000.ethernet end0: cannot attach to PHY (error: -EINVAL)
+
+Причина: phylink validation требует, чтобы phy-mode описывал конкретный
+физический интерфейс между MAC и PHY (mii, rmii, rgmii*, sgmii и т.п.).
+Значение "internal" описывает только то, что PHY внутри SoC, но не сам
+сигнальный режим. phylink не может вычислить supported speeds/duplex и
+падает с -EINVAL до того, как MAC цепляется к PHY.
+
+В vendor SDK Sophgo (src/licheerv-nano-build-vendor/build/boards/default/
+dts/{cv180x,sg200x}/*_base.dtsi) для того же узла @4070000 указано
+`phy-mode = "rmii";`. CV1800/SG2002 internal PHY 10/100M работает с MAC
+в режиме RMII (две data line + clock 50 MHz), это согласуется с RMII
+speed-набором (10/100 Mbps).
+
+Применяется поверх чистого snapshot src/linux v6.18.29:
+    git -C src/linux apply patches/linux/0002-cv180x-fix-ethernet-phy-mode.patch
+
+diff -urN a/arch/riscv/boot/dts/sophgo/cv180x.dtsi b/arch/riscv/boot/dts/sophgo/cv180x.dtsi
+--- a/arch/riscv/boot/dts/sophgo/cv180x.dtsi	2026-05-25 00:00:00.000000000 +0300
++++ b/arch/riscv/boot/dts/sophgo/cv180x.dtsi	2026-05-25 00:00:00.000000000 +0300
+@@ -224,7 +224,7 @@
+ 			interrupts = <SOC_PERIPHERAL_IRQ(15) IRQ_TYPE_LEVEL_HIGH>;
+ 			interrupt-names = "macirq";
+ 			phy-handle = <&internal_ephy>;
+-			phy-mode = "internal";
++			phy-mode = "rmii";
+ 			resets = <&rst RST_ETH0>;
+ 			reset-names = "stmmaceth";
+ 			rx-fifo-depth = <8192>;

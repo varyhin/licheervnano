@@ -1,0 +1,310 @@
+cv1800b audio: capture это I2S clock slave, per-open ADC lifecycle, чистка
+
+Назначение: исправить недетерминированный захват внутреннего микрофона и
+причесать драйвер до рабочего состояния (проверено на железе SG2002 LicheeRV Nano).
+
+Суть: внутренний ADC это I2S-мастер тактов (генерит BCLK/LRCK), а контроллер
+I2S0 на capture обязан быть clock slave. Раньше контроллер тоже мастерил BCLK
+(BLK_MASTER_MODE + BCLK_OUT_FORCE_EN, по сбросу = 1), два независимых делителя
+MCLK давали случайную фазу: уровень скакал лесенкой x2^k и слот L/R плавал на
+каждом открытии. set_fmt теперь управляет ОБОИМИ битами (slave -> оба 0), а сам
+slave-режим задаётся из DT (capture-линк сделан codec-master, см. правку 0010).
+
+cv1800b-tdm.c:
+- set_fmt: master/slave через BLK_MASTER_MODE + BCLK_OUT_FORCE_EN, лог роли.
+- capture channels_min=2: железо формирует 2 слота, прямой -c1 ломал бы кадр
+  вдвое (замедленный/басовитый звук); моно идёт через plughw (софт-downmix).
+- reset только в hw_params (как mainline), без экспериментального trigger-reset.
+- многословная диагностика переведена в dev_dbg.
+
+cv1800b-sound-adc.c:
+- per-open lifecycle: bit29 soft-reset в hw_params (по выключенному ADC),
+  enable в prepare, новый .shutdown гасит ADC; режим always-on убран.
+- settle 1000 мс в prepare: floating правый вход оседает по DC ~700 мс (замер
+  на железе, tau ~70 мс) + запас; без него старт моно-downmix несёт транзиент.
+- capture channels_min=2; диагностика в dev_dbg.
+- CTUNE (ANA3 bits[11:8]) НЕ пишется: 0xC это сбросовый дефолт регистра, прежняя
+  vendor-запись была редундантной (на железе CTUNE=0 не дал разницы) это патч
+  0014 удалён.
+
+Проверено на железе: захват детерминированный (один слот, один уровень), моно
+на честных 48 кГц, старт без транзиента, playback (i2s3 master) не задет.
+--- a/sound/soc/sophgo/cv1800b-tdm.c
++++ b/sound/soc/sophgo/cv1800b-tdm.c
+@@ -423,6 +423,15 @@
+ 
+ 	cv1800b_set_tx_mode(i2s, tx_mode);
+ 
++	/*
++	 * Ensure the shared audio clock runs before the codec's prepare(): the
++	 * internal ADC (the I2S clock master) divides it down to BCLK/LRCK, and
++	 * this controller (a clock slave on the capture link) needs its clock
++	 * domain up to receive them. set_rate_for_mclk() already enables it on
++	 * the computed-mclk path; do it for the machine-supplied (mclk-fs) path.
++	 */
++	cv1800b_enable_clocks(i2s, true);
++
+ 	cv1800b_reset_fifo(i2s);
+ 	cv1800b_reset_i2s(i2s);
+ 	return 0;
+@@ -452,6 +461,8 @@
+ 		return -EINVAL;
+ 	}
+ 	writel(val, i2s->base + CV1800B_I2S_ENABLE);
++	dev_dbg(i2s->dev, "i2s_enable=0x%08x\n",
++		readl(i2s->base + CV1800B_I2S_ENABLE));
+ 	return 0;
+ }
+ 
+@@ -497,21 +508,35 @@
+ 
+ 	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
+ 	case SND_SOC_DAIFMT_CBP_CFP:
+-		dev_dbg(i2s->dev, "set to master mode\n");
+ 		master = 1;
+ 		break;
+ 
+ 	case SND_SOC_DAIFMT_CBC_CFC:
+-		dev_dbg(i2s->dev, "set to slave mode\n");
+ 		master = 0;
+ 		break;
+ 	default:
+ 		return -EINVAL;
+ 	}
+ 
++	/*
++	 * Drive BLK_MASTER_MODE and the forced BCLK output together. As a clock
++	 * consumer (slave) the controller must NOT generate BCLK/LRCK: the
++	 * internal ADC is a clock-master-only codec and the single clock source,
++	 * so a controller that also forced BCLK out would race it, and the RX
++	 * deserializer would latch the ADC frame at a random bit offset (level
++	 * x2^k) and a random L/R slot per open. BCLK_OUT_FORCE_EN resets to 1, so
++	 * clearing only BLK_MASTER_MODE is not enough; it must be cleared too.
++	 * MCLK to the codec is still provided separately via set_sysclk/mclk-fs.
++	 */
+ 	val = readl(i2s->base + CV1800B_BLK_MODE_SETTING);
+ 	val = u32_replace_bits(val, master, BLK_MASTER_MODE_MASK);
+ 	writel(val, i2s->base + CV1800B_BLK_MODE_SETTING);
++
++	val = readl(i2s->base + CV1800B_CLK_CTRL0);
++	val = u32_replace_bits(val, master, CLK_BCLK_OUT_CLK_FORCE_EN_MASK);
++	writel(val, i2s->base + CV1800B_CLK_CTRL0);
++
++	dev_info(i2s->dev, "clock %s\n", master ? "master" : "slave");
+ 	return 0;
+ }
+ 
+@@ -569,7 +594,13 @@
+ 	},
+ 	.capture = {
+ 		.stream_name = "Capture",
+-		.channels_min = 1,
++		/*
++		 * The internal ADC always frames 2 slots, so capture must run
++		 * 2-channel; a 1-channel open would set 1 slot and halve the
++		 * frame (slowed/pitched audio). Mono apps go through plughw,
++		 * which opens 2ch here and downmixes in software.
++		 */
++		.channels_min = 2,
+ 		.channels_max = 2,
+ 		.rates = SNDRV_PCM_RATE_8000_192000,
+ 		.formats = SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S16_LE,
+--- a/sound/soc/sophgo/cv1800b-sound-adc.c
++++ b/sound/soc/sophgo/cv1800b-sound-adc.c
+@@ -12,6 +12,7 @@
+ #include <sound/soc-component.h>
+ #include <sound/control.h>
+ #include <linux/io.h>
++#include <linux/delay.h>
+ #include <linux/kernel.h>
+ #include <linux/bitops.h>
+ 
+@@ -50,6 +51,12 @@
+ #define REG_MUTEL_RXPGA                GENMASK(0, 0)
+ #define REG_MUTER_RXPGA                GENMASK(1, 1)
+ 
++/* CV1800B_RXADC_ANA3 */
++#define REG_CTUNE_RXADC                GENMASK(11, 8)
++#define REG_EN_DITHER_RXADC            GENMASK(12, 12)	/* sigma-delta dither */
++#define REG_RSTSDM_RXADC               GENMASK(13, 13)	/* reset sigma-delta modulator */
++#define REG_EN_VCMT_RXADC              GENMASK(14, 14)	/* enable common-mode (VCM) */
++
+ /* CV1800B_RXADC_CLK */
+ #define REG_RXADC_CLK_INV              GENMASK(0, 0)
+ #define REG_RXADC_SCK_DIV              GENMASK(15, 8)
+@@ -132,6 +139,11 @@
+ 	val = u32_replace_bits(val, 0x19, REG_RXADC_DLYEN);
+ 	writel(val, priv->regs + CV1800B_RXADC_CLK);
+ 
++	/*
++	 * CTUNE (ANA3 bits[11:8]) is left at its 0xC reset default. The vendor
++	 * explicitly wrote 0xC here, but on hw that equals the power-on default
++	 * and forcing CTUNE=0 made no difference, so the write was redundant.
++	 */
+ 	return 0;
+ }
+ 
+@@ -179,14 +191,18 @@
+ 		 readl(priv->regs + CV1800B_RXADC_ANA3));
+ 
+ 	/*
+-	 * Soft-reset the internal ADC so each capture starts from a known
+-	 * state (vendor cv182xa_reset_adc). Without it the sigma-delta/CIC
+-	 * comes up in a random state (silence / clean / railing) per open.
+-	 * Active-low pulse on bit 29 of the shared audio reset register.
++	 * Soft-reset the internal ADC so each capture starts from a known state
++	 * (vendor cv182xa_reset_adc): active-low pulse on bit 29 of the shared
++	 * audio reset register. The ADC is powered down in shutdown(), so this
++	 * runs while it is off, the way the vendor sequence expects.
+ 	 */
+ 	r = readl(priv->rst);
+-	writel(r & ~CV1800B_ADC_RESET_BIT, priv->rst);
+-	writel(r | CV1800B_ADC_RESET_BIT, priv->rst);
++	writel(r & ~CV1800B_ADC_RESET_BIT, priv->rst);	/* assert (active-low) */
++	usleep_range(200, 400);				/* hold modulator in reset */
++	writel(r | CV1800B_ADC_RESET_BIT, priv->rst);	/* deassert */
++	usleep_range(2000, 3000);			/* let the reset settle */
++	dev_dbg(priv->dev, "adc soft-reset done, rst=0x%08x\n",
++		readl(priv->rst));
+ 
+ 	/* Re-commit analog regs after reset (vendor rewrites ANA0/ANA2). */
+ 	writel(readl(priv->regs + CV1800B_RXADC_ANA2),
+@@ -207,38 +223,100 @@
+ 	val = u32_replace_bits(val, DECIMATION_64, REG_RXADC_CIC_OPT);
+ 	writel(val, priv->regs + CV1800B_RXADCC_CTRL1);
+ 
++	/*
++	 * Vendor "ECO function": an ADC analog gain-ratio bit (ADDI_TXDAC, bit0)
++	 * physically lives in the DAC register block at 0x0300A020. The vendor
++	 * cv181xadc clears it (GAIN_RATIO_1) on every rate via a separate
++	 * ioremap; mainline never touches it. Missing it is a candidate cause of
++	 * the sigma-delta modulator coming up railing/unstable per open.
++	 */
++	{
++		void __iomem *eco = ioremap(0x0300A020, 4);
++
++		if (eco) {
++			writel(readl(eco) & ~0x1u, eco);	/* GAIN_RATIO_1 */
++			iounmap(eco);
++		}
++	}
++
+ 	dev_dbg(priv->dev,
+-		 "adc hw_params OUT: CTRL0=%#x CTRL1=%#x ANA0=%#x ANA3=%#x\n",
+-		 readl(priv->regs + CV1800B_RXADC_CTRL0),
+-		 readl(priv->regs + CV1800B_RXADCC_CTRL1),
+-		 readl(priv->regs + CV1800B_RXADC_ANA0),
+-		 readl(priv->regs + CV1800B_RXADC_ANA3));
++		"adc cfg: ctrl1=0x%08x ana0=0x%08x ana3=0x%08x clk=0x%08x\n",
++		readl(priv->regs + CV1800B_RXADCC_CTRL1),
++		readl(priv->regs + CV1800B_RXADC_ANA0),
++		readl(priv->regs + CV1800B_RXADC_ANA3),
++		readl(priv->regs + CV1800B_RXADC_CLK));
+ 	return 0;
+ }
+ 
+-static int cv1800b_adc_dai_trigger(struct snd_pcm_substream *substream, int cmd,
+-				   struct snd_soc_dai *dai)
++static int cv1800b_adc_prepare(struct snd_pcm_substream *substream,
++			       struct snd_soc_dai *dai)
+ {
+ 	struct cv1800b_priv *priv = snd_soc_dai_get_drvdata(dai);
+ 
+-	switch (cmd) {
+-	case SNDRV_PCM_TRIGGER_START:
+-	case SNDRV_PCM_TRIGGER_RESUME:
+-	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+-		cv1800b_adc_enable(priv, true);
+-		break;
+-	case SNDRV_PCM_TRIGGER_STOP:
+-	case SNDRV_PCM_TRIGGER_SUSPEND:
+-	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+-		cv1800b_adc_enable(priv, false);
+-		break;
+-	default:
+-		return -EINVAL;
++	/*
++	 * Power the ADC and start its I2S-TX here, in prepare, while the audio
++	 * clock is already running (the cpu DAI enables it in hw_params) and
++	 * BEFORE the controller enables its I2S RX at trigger. As the I2S clock
++	 * master the ADC must be generating BCLK/LRCK before the RX (a slave)
++	 * latches onto them. The settle below trims the analog start-up transient.
++	 */
++	cv1800b_adc_enable(priv, true);
++	dev_dbg(priv->dev, "adc enabled, ctrl0=0x%08x\n",
++		readl(priv->regs + CV1800B_RXADC_CTRL0));
++
++	/*
++	 * Poll RXADC_STATUS for the CIC filter init-done (low byte 0x77) after
++	 * enable, so we proceed only once the digital front-end is up.
++	 */
++	{
++		u32 st = 0;
++		int i;
++
++		for (i = 0; i < 50; i++) {
++			st = readl(priv->regs + CV1800B_RXADC_STATUS);
++			if ((st & 0xff) == 0x77)
++				break;
++			usleep_range(1000, 2000);
++		}
++		if ((st & 0xff) != 0x77)
++			dev_warn(priv->dev,
++				 "adc init-done not reached, status=0x%08x\n", st);
++		else
++			dev_dbg(priv->dev, "adc init-done after ~%dms\n", i);
+ 	}
+ 
++	/*
++	 * Settle the analog side before the I2S RX latches at trigger. The
++	 * floating right input has an exponential DC-settling transient after
++	 * enable (measured on hw: peak ~31000 at t=0, tau ~70 ms, down to the
++	 * noise floor by ~700 ms). The left input (the mic) settles at once, but
++	 * mono capture via plughw downmixes L+R, so without this the first ~0.5 s
++	 * of a recording carries a loud transient from the right channel. 1000 ms
++	 * is ~700 ms measured plus margin for unit/temperature spread in tau;
++	 * capture is opened manually (no boot autostart), so the latency is fine.
++	 * INIT-DONE above gates the digital front-end; this wait is analog-only.
++	 * No SDM-init (vendor-faithful: no RSTSDM/VCMT/DITHER); the per-open soft
++	 * reset in hw_params gives the modulator a clean start.
++	 */
++	msleep(1000);
+ 	return 0;
+ }
+ 
++static void cv1800b_adc_shutdown(struct snd_pcm_substream *substream,
++				 struct snd_soc_dai *dai)
++{
++	struct cv1800b_priv *priv = snd_soc_dai_get_drvdata(dai);
++
++	/*
++	 * Power the ADC down on close so the next capture re-runs the soft reset
++	 * (hw_params) and enable+settle (prepare) from a clean off state. Enable
++	 * lives in prepare and the I2S RX/DMA is owned by the cpu DAI, so the
++	 * codec needs no trigger op.
++	 */
++	cv1800b_adc_enable(priv, false);
++	dev_dbg(priv->dev, "adc off (shutdown)\n");
++}
++
+ static int cv1800b_adc_dai_set_sysclk(struct snd_soc_dai *dai, int clk_id,
+ 				      unsigned int freq, int dir)
+ {
+@@ -251,14 +329,15 @@
+ 
+ static const struct snd_soc_dai_ops cv1800b_adc_dai_ops = {
+ 	.hw_params = cv1800b_adc_hw_params,
++	.prepare = cv1800b_adc_prepare,
++	.shutdown = cv1800b_adc_shutdown,
+ 	.set_sysclk = cv1800b_adc_dai_set_sysclk,
+-	.trigger = cv1800b_adc_dai_trigger,
+ };
+ 
+ static struct snd_soc_dai_driver cv1800b_adc_dai = {
+ 	.name = "adc-hifi",
+ 	.capture = { .stream_name = "ADC Capture",
+-		     .channels_min = 1,
++		     .channels_min = 2,
+ 		     .channels_max = 2,
+ 		     .rates = SNDRV_PCM_RATE_48000,
+ 		     .formats = SNDRV_PCM_FMTBIT_S16_LE },

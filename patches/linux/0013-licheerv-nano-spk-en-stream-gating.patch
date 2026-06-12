@@ -1,0 +1,62 @@
+licheerv-nano: стрим-гейтинг усилителя через SPK_EN в cv1800b-sound-dac
+
+Добавляет опциональный gpio "spk-en" в драйвер внутреннего DAC. GPIO
+переключается вместе с включением DAC (.trigger START/STOP через
+cv1800b_dac_enable), поэтому внешний усилитель AW8010A питается только
+во время воспроизведения, а не постоянно. Без свойства spk-en-gpios
+поведение прежнее: gpiod_set_value по NULL-дескриптору это no-op.
+
+Заменяет always-on gpio-hog. Патч 0012 теперь задаёт spk-en-gpios у
+&sound_dac вместо hog, и этот gpio становится stream-gated.
+
+Проверка на железе: в покое `gpioget` линии SPK_EN (GPIOA[15]) даёт 0,
+во время `aplay` поднимается в 1.
+
+Применение:
+    git -C src/linux apply patches/linux/0013-licheerv-nano-spk-en-stream-gating.patch
+
+--- a/sound/soc/sophgo/cv1800b-sound-dac.c
++++ b/sound/soc/sophgo/cv1800b-sound-dac.c
+@@ -9,6 +9,7 @@
+ #include <linux/bits.h>
+ #include <sound/soc.h>
+ #include <linux/io.h>
++#include <linux/gpio/consumer.h>
+
+ #define CV1800B_TXDAC_CTRL0   0x00
+ #define CV1800B_TXDAC_CTRL1   0x04
+@@ -38,6 +39,8 @@
+ struct cv1800b_priv {
+ 	void __iomem *regs;
+ 	struct device *dev;
++	/* Optional speaker-amp enable (LicheeRV Nano SPK_EN -> AW8010A). */
++	struct gpio_desc *spk_en;
+ };
+
+ enum decimation_values {
+@@ -55,6 +58,12 @@
+ 	val = u32_replace_bits(val, enable, REG_TXDAC_EN);
+ 	val = u32_replace_bits(val, enable, REG_I2S_RX_EN);
+ 	writel(val, priv->regs + CV1800B_TXDAC_CTRL0);
++
++	/*
++	 * Gate the external speaker amplifier with the playback stream so it
++	 * is only powered while the DAC runs (no-op if spk-en gpio absent).
++	 */
++	gpiod_set_value(priv->spk_en, enable);
+ }
+
+ /*
+@@ -182,6 +191,12 @@
+ 	if (IS_ERR(priv->regs))
+ 		return PTR_ERR(priv->regs);
+
++	/* Speaker-amp enable is board-optional (set via spk-en-gpios). */
++	priv->spk_en = devm_gpiod_get_optional(dev, "spk-en", GPIOD_OUT_LOW);
++	if (IS_ERR(priv->spk_en))
++		return dev_err_probe(dev, PTR_ERR(priv->spk_en),
++				     "failed to get spk-en gpio\n");
++
+ 	platform_set_drvdata(pdev, priv);
+ 	return devm_snd_soc_register_component(&pdev->dev,
+ 					       &cv1800b_dac_component,

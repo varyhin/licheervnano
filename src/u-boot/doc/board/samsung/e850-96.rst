@@ -1,0 +1,151 @@
+.. SPDX-License-Identifier: GPL-2.0+
+.. sectionauthor:: Sam Protsenko <semen.protsenko@linaro.org>
+
+WinLink E850-96 board
+=====================
+
+Overview
+--------
+
+WinLink's E850-96 board [1]_ is based on Samsung Exynos850 SoC and follows
+96Boards Consumer Edition specification [2]_. That makes it possible to use
+96Boards mezzanine boards [3]_ along with it. It's an open-hardware board and
+the hardware design files [4]_ were published, along with the supported
+software [5]_ and related documentation.
+
+U-Boot can be used on E850-96 instead of the original Samsung LittleKernel based
+bootloader [6]_. Because FWBL1 [7]_ doesn't verify bootloader's signature, there
+is no need to sign a U-Boot binary. That means U-Boot binary can be flashed into
+``bootloader`` partition (instead of LittleKernel bootloader) and it will just
+work.
+
+Because BL2 bootloader already sets up DRAM and runs the final bootloader
+(U-Boot) from DRAM, there is no need in U-Boot SPL. It's enough to have only
+U-Boot proper (``u-boot.bin``).
+
+Boot Flow
+---------
+
+The boot path for Exynos850 is shown on the figure below.
+
+.. image:: img/exynos850-boot-architecture.svg
+  :alt: Exynos850 SoC boot flow
+
+Legend:
+
+* ``BL0``: Boot ROM code
+* ``BL1``: Software part of Boot ROM
+* ``EPBL``: Exynos Primary Boot Loader
+* ``BL2``: Initializes CMU and DRAM and runs the final bootloader
+* ``Bootloader``: Final bootloader (e.g. U-Boot); also called BL33 in terms of
+  ARM boot flow
+* ``EL3_MON``: EL3 monitor (trusted firmware, handles SMC calls); also called
+  BL31 in terms of ARM boot flow
+* ``LDFW``: Loadable Firmware
+
+Unbricking Note
+---------------
+
+In case the board is bricked for some reason, the ``dltool`` [8]_ can be used to
+unbrick and revive it. This tool performs USB boot, and uploads the LittleKernel
+bootloader over USB, which is then being executed on the board. The loaded
+bootloader further enters fastboot mode, so that the user can flash the
+functional bootloader binary (U-Boot or LittleKernel [7]_) to eMMC using
+``fastboot`` tool. Please read the ``dltool`` README file for more details about
+the procedure.
+
+Build Procedure
+---------------
+
+Build U-Boot binary from source code (using AArch64 baremetal GCC toolchain):
+
+.. prompt:: bash $
+
+  export PATH=<toolchain path>/bin:$PATH
+  export CROSS_COMPILE=<toolchain prefix>
+  make e850-96_defconfig
+  make
+
+The original E850-96 board is shipped with LittleKernel-based bootloader flashed
+in eMMC. To replace it with U-Boot, boot into fastboot mode (as described in
+the board software documentation [9]_), and flash U-Boot binary:
+
+.. prompt:: bash $
+
+  fastboot flash bootloader u-boot.bin
+  fastboot reboot
+
+U-Boot will boot up to the shell.
+
+Flashing
+--------
+
+User area of eMMC contains GPT partition table (either Linux or Android). Boot
+Partition A (``mmc0boot0``) contains all firmware/bootloaders. Boot Partition
+B (``mmc0boot1``) contains U-Boot environment.
+
+First make sure to format eMMC accordingly. Prepare the initial environment:
+
+.. prompt:: bash =>
+
+  env default -f -a
+  env save
+
+For Linux, just format eMMC using default ``$partitions`` definitions:
+
+.. prompt:: bash =>
+
+  gpt write mmc 0 $partitions
+
+For Android, use ``$partitions_android`` instead:
+
+.. prompt:: bash =>
+
+  setenv partitions_linux $partitions
+  setenv partitions $partitions_android
+  env save
+  gpt write mmc 0 $partitions
+
+In case of Linux, there are two partitions available: ``esp`` (EFI System
+Partition) and ``rootfs``. It is recommended to use fastboot to flash images to
+those partitions. Enter fastboot mode on your device:
+
+.. prompt:: bash =>
+
+  fastboot usb 0
+
+And then flash the images:
+
+.. prompt:: bash $
+
+  fastboot flash esp esp.img
+  fastboot flash rootfs rootfs.img
+
+To update the firmware, it's easier to use DFU. Enter DFU mode on the board:
+
+.. prompt:: bash =>
+
+  dfu 0 mmc 0
+
+To update U-Boot:
+
+.. prompt:: bash $
+
+  dfu-util -D u-boot.bin -a bootloader
+
+It's also possible to use fastboot to flash the whole ``mmc0boot0`` HW
+partition, but it's not so straightforward, as one have to prepare the image for
+the whole ``boot0`` partition containing all firmware binaries first.
+
+References
+----------
+
+.. [1] https://www.96boards.org/product/e850-96b/
+.. [2] https://www.96boards.org/products/ce/
+.. [3] https://www.96boards.org/products/mezzanine/
+.. [4] https://www.96boards.org/documentation/consumer/e850-96b/hardware-docs/
+.. [5] https://gitlab.com/Linaro/96boards/e850-96/
+.. [6] https://gitlab.com/Linaro/96boards/e850-96/lk
+.. [7] https://gitlab.com/Linaro/96boards/e850-96/images
+.. [8] https://gitlab.com/Linaro/96boards/e850-96/tools/dltool
+.. [9] https://gitlab.com/Linaro/96boards/e850-96/doc

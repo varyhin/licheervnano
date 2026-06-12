@@ -1,0 +1,35 @@
+Назначение: погасить синий USER LED (GPIOA14) на этапе FSBL (BL2), чтобы он не
+горел весь boot до старта Linux.
+
+Причина: пад GPIOA14 это SD0_PWR_EN, reset/boot оставляет его в функции
+SD0_PWR_EN (fmux 0x03001038 = 0x0), которая держит линию HIGH. LED active-high,
+поэтому синий горит от подачи питания до момента, когда ядро (leds-gpio + DTS
+pinctrl + default-state=off) переведёт пад в GPIO и погасит LED. Красный LED2 это
+индикатор питания 3.3V, к GPIO не подключён, тут не затрагивается.
+
+Фикс: в bl2_main() после load_ddr(), до load_rest(), мукс пада в GPIO
+(PINMUX_BASE+0x38 = 0x3) + drive LOW по GPIO0 (0x03020000). FSBL исполняется в
+M-mode, прямой MMIO доступен (в mainline U-Boot S-mode тот же приём виснет, см.
+memory uboot-smode-peripheral-mmu, поэтому делаем именно в FSBL). OpenSBI и U-Boot
+GPIOA14 не трогают, поэтому LOW сохраняется до Linux.
+
+Применяется поверх patches/fsbl/0001 (тулчейн), git apply -p1 из src/licheerv-nano-build-vendor.
+
+--- a/fsbl/plat/cv181x/bl2/bl2_main.c
++++ b/fsbl/plat/cv181x/bl2/bl2_main.c
+@@ -86,6 +86,15 @@
+ 	mode = CLK_ND;
+ #endif
+ #endif
++	/* USER LED (синий, GPIOA14): погасить уже на этапе FSBL.
++	 * Пад SD0_PWR_EN по умолчанию держит линию HIGH, и синий LED (active-high)
++	 * горит весь boot до старта Linux. Мукс пада в GPIO + drive LOW гасит его
++	 * здесь; OpenSBI и mainline U-Boot пин не трогают, до Linux остаётся
++	 * погашенным. M-mode, MMIO доступен напрямую (в отличие от U-Boot S-mode). */
++	mmio_write_32(PINMUX_BASE + 0x38, 0x3);                            /* GPIOA14 -> GPIO (fmux 0x03001038) */
++	mmio_write_32(0x03020004, mmio_read_32(0x03020004) | (1u << 14));  /* GPIO0 DIR bit14 = output */
++	mmio_write_32(0x03020000, mmio_read_32(0x03020000) & ~(1u << 14)); /* GPIO0 DR bit14 = LOW (LED off) */
++
+ 	load_rest(mode);
+ 	NOTICE("BL2 end.\n");
+ 

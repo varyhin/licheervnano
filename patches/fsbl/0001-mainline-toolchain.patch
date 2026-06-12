@@ -1,0 +1,79 @@
+--- a/fsbl/lib/cpu/riscv/bl2_entrypoint.S
++++ b/fsbl/lib/cpu/riscv/bl2_entrypoint.S
+@@ -2,6 +2,12 @@
+ #include "csr.h"
+ #include <riscv/asm_macros.S>
+ 
++  # T-Head custom CSRs (vendor names → numeric values)
++  .equ mxstatus, 0x7c0
++  .equ mhcr,     0x7c1
++  .equ mcor,     0x7c2
++  .equ mhint,    0x7c5
++
+   .option norvc
+   .section .text.init,"ax",@progbits
+   .globl bl2_entrypoint
+--- a/fsbl/lib/cpu/riscv/cache.c
++++ b/fsbl/lib/cpu/riscv/cache.c
+@@ -54,17 +54,18 @@
+ 	CACHE_OP_RANGE(DCACHE_CIPA_A0, start, size);
+ }
+ 
++/* T-Head custom CSRs: mhcr = 0x7c1 */
+ void enable_dcache(void)
+ {
+ 	asm volatile(
+-		"csrs mhcr, %0;" ::"rI"(0x2)
++		"csrs 0x7c1, %0;" ::"rI"(0x2)
+ 	);
+ }
+ 
+ void disable_dcache(void)
+ {
+ 	asm volatile(
+-		"csrc mhcr, %0;" ::"rI"(0x2)
++		"csrc 0x7c1, %0;" ::"rI"(0x2)
+ 	);
+ }
+ 
+--- a/fsbl/lib/cpu/riscv/cpu.mk
++++ b/fsbl/lib/cpu/riscv/cpu.mk
+@@ -4,7 +4,7 @@
+ 	$(CPPFLAGS) \
+ 	-DRISCV \
+ 	-D__ASSEMBLY__ \
+-	-march=rv64imafdcvxthead -mstrict-align \
++	-march=rv64imafdc_xtheadba_xtheadbb_xtheadbs_xtheadcmo_xtheadcondmov_xtheadfmemidx_xtheadfmv_xtheadint_xtheadmac_xtheadmemidx_xtheadmempair_xtheadsync -mstrict-align \
+ 	-mcmodel=medany \
+ 	-mabi=lp64d \
+ 	-ffreestanding  \
+@@ -13,7 +13,7 @@
+ TF_CFLAGS += \
+ 	$(CPPFLAGS) \
+ 	-DRISCV \
+-	-march=rv64imafdcvxthead \
++	-march=rv64imafdc_xtheadba_xtheadbb_xtheadbs_xtheadcmo_xtheadcondmov_xtheadfmemidx_xtheadfmv_xtheadint_xtheadmac_xtheadmemidx_xtheadmempair_xtheadsync \
+ 	-mcmodel=medany \
+ 	-mabi=lp64d \
+ 	-ffreestanding -fno-builtin -Wall -std=gnu99 \
+@@ -22,6 +22,7 @@
+ 
+ TF_LDFLAGS += \
+ 	--fatal-warnings -Os \
++	--no-warn-rwx-segments \
+ 	--gc-sections \
+ 	${TF_LDFLAGS_aarch64}
+ 
+--- a/fsbl/lib/cpu/riscv/cpu_helper.c
++++ b/fsbl/lib/cpu/riscv/cpu_helper.c
+@@ -11,8 +11,8 @@
+ void sync_cache(void)
+ {
+ 	asm volatile(
+-			"icache.iall\n"
+-			"sync.i\n"
++			"th.icache.iall\n"
++			"th.sync.i\n"
+ 			:
+ 			:
+ 			: "memory");

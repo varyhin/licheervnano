@@ -1,0 +1,17 @@
+# Регенерация SSH host-ключей на первом boot платы.
+# Ключи, сгенерированные debootstrap-ом в chroot, вычищаются из образа
+# при упаковке (make image, target _image_pack): иначе все платы из
+# одного образа несут одну SSH-идентичность, а публикация образа
+# делает приватные host-ключи публичными (MITM на ssh любой платы).
+# ConditionPathExists гасит юнит на всех последующих boot.
+[Unit]
+Description=Regenerate SSH host keys on first boot
+ConditionPathExists=!/etc/ssh/ssh_host_ed25519_key
+Before=ssh.service ssh.socket
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/ssh-keygen -A
+
+[Install]
+WantedBy=multi-user.target

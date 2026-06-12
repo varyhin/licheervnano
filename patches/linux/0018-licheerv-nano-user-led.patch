@@ -1,0 +1,165 @@
+Назначение: USER LED (синий, GPIOA14) на LicheeRV Nano (b/e/w/we), kernel-сторона.
+
+Делает три вещи одним патчем: (1) pinmux пада SD0_PWR_EN в GPIO
+(PINMUX(PIN_SD0_PWR_EN, 3)) это нужно, т.к. boot оставляет fmux=0x0 и линию
+HIGH, отчего синий горит всегда; (2) default-state="off" вместо триггера mmc0 это
+синий выключен по умолчанию; (3) лейбл licheerv-nano:blue:user (был ошибочный
+green, LED физически синий).
+
+Оформлено DTS-оверрайдами по ссылкам на узлы (&pinctrl, &{/leds}, &{/leds/user-
+led}), дописанными в конец файла, а НЕ правкой узла по месту. За счёт этого патч
+зависит только от факта существования /leds (его создаёт 0001/upstream) и метки
+&pinctrl (из SoC dtsi), но не от их расположения в файле, поэтому устойчив к
+сдвигам строк другими патчами серии. Тот же идиом, что &sound_dac в 0012.
+
+Полярность active-high берётся из базового узла (отдельного патча полярности нет;
+прежний ошибочный 0006 active-low удалён). Раннее гашение синего в boot делает
+patches/fsbl/0002-user-led-off-blue.patch (FSBL, M-mode); этот патч это
+kernel-сторона. Красный LED2 это индикатор питания 3.3V, не GPIO, не затрагивается.
+
+Применяется поверх 0001 (создаёт e/w/we и базовый узел leds), git apply -p1 из
+src/linux. Формат diff -u (без git index-строк), иначе git apply пропускает.
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-b.dts
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-b.dts
+@@ -226,3 +226,33 @@
+ &sound_dac {
+ 	spk-en-gpios = <&porta 15 GPIO_ACTIVE_HIGH>;
+ };
++
++/*
++ * USER LED (синий, GPIOA14). Оформлено оверрайдами по ссылкам на узлы, а не
++ * правкой узла по месту: патч зависит только от наличия /leds и метки &pinctrl
++ * (создаются базовым 0001/upstream), но НЕ от их расположения в файле, поэтому
++ * устойчив к сдвигам строк другими патчами. Полярность active-high берётся из
++ * базового узла (отдельного патча полярности нет; прежний 0006 удалён).
++ * pinmux пада SD0_PWR_EN в GPIO нужен, т.к. boot оставляет fmux=0x0 и линию
++ * HIGH (синий горит всегда). Раннее гашение в boot делает FSBL (patches/fsbl/
++ * 0002), здесь kernel-сторона: pinmux + выключен по умолчанию + лейбл blue.
++ */
++&pinctrl {
++	user_led_cfg: user-led-cfg {
++		user-led-pins {
++			pinmux = <PINMUX(PIN_SD0_PWR_EN, 3)>;
++			power-source = <3300>;
++		};
++	};
++};
++
++&{/leds} {
++	pinctrl-names = "default";
++	pinctrl-0 = <&user_led_cfg>;
++};
++
++&{/leds/user-led} {
++	label = "licheerv-nano:blue:user";
++	/delete-property/ linux,default-trigger;
++	default-state = "off";
++};
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-e.dts
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-e.dts
+@@ -242,3 +242,33 @@
+ &sound_dac {
+ 	spk-en-gpios = <&porta 15 GPIO_ACTIVE_HIGH>;
+ };
++
++/*
++ * USER LED (синий, GPIOA14). Оформлено оверрайдами по ссылкам на узлы, а не
++ * правкой узла по месту: патч зависит только от наличия /leds и метки &pinctrl
++ * (создаются базовым 0001/upstream), но НЕ от их расположения в файле, поэтому
++ * устойчив к сдвигам строк другими патчами. Полярность active-high берётся из
++ * базового узла (отдельного патча полярности нет; прежний 0006 удалён).
++ * pinmux пада SD0_PWR_EN в GPIO нужен, т.к. boot оставляет fmux=0x0 и линию
++ * HIGH (синий горит всегда). Раннее гашение в boot делает FSBL (patches/fsbl/
++ * 0002), здесь kernel-сторона: pinmux + выключен по умолчанию + лейбл blue.
++ */
++&pinctrl {
++	user_led_cfg: user-led-cfg {
++		user-led-pins {
++			pinmux = <PINMUX(PIN_SD0_PWR_EN, 3)>;
++			power-source = <3300>;
++		};
++	};
++};
++
++&{/leds} {
++	pinctrl-names = "default";
++	pinctrl-0 = <&user_led_cfg>;
++};
++
++&{/leds/user-led} {
++	label = "licheerv-nano:blue:user";
++	/delete-property/ linux,default-trigger;
++	default-state = "off";
++};
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-w.dts
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-w.dts
+@@ -285,3 +285,33 @@
+ &sound_dac {
+ 	spk-en-gpios = <&porta 15 GPIO_ACTIVE_HIGH>;
+ };
++
++/*
++ * USER LED (синий, GPIOA14). Оформлено оверрайдами по ссылкам на узлы, а не
++ * правкой узла по месту: патч зависит только от наличия /leds и метки &pinctrl
++ * (создаются базовым 0001/upstream), но НЕ от их расположения в файле, поэтому
++ * устойчив к сдвигам строк другими патчами. Полярность active-high берётся из
++ * базового узла (отдельного патча полярности нет; прежний 0006 удалён).
++ * pinmux пада SD0_PWR_EN в GPIO нужен, т.к. boot оставляет fmux=0x0 и линию
++ * HIGH (синий горит всегда). Раннее гашение в boot делает FSBL (patches/fsbl/
++ * 0002), здесь kernel-сторона: pinmux + выключен по умолчанию + лейбл blue.
++ */
++&pinctrl {
++	user_led_cfg: user-led-cfg {
++		user-led-pins {
++			pinmux = <PINMUX(PIN_SD0_PWR_EN, 3)>;
++			power-source = <3300>;
++		};
++	};
++};
++
++&{/leds} {
++	pinctrl-names = "default";
++	pinctrl-0 = <&user_led_cfg>;
++};
++
++&{/leds/user-led} {
++	label = "licheerv-nano:blue:user";
++	/delete-property/ linux,default-trigger;
++	default-state = "off";
++};
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-we.dts
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-we.dts
+@@ -301,3 +301,33 @@
+ &sound_dac {
+ 	spk-en-gpios = <&porta 15 GPIO_ACTIVE_HIGH>;
+ };
++
++/*
++ * USER LED (синий, GPIOA14). Оформлено оверрайдами по ссылкам на узлы, а не
++ * правкой узла по месту: патч зависит только от наличия /leds и метки &pinctrl
++ * (создаются базовым 0001/upstream), но НЕ от их расположения в файле, поэтому
++ * устойчив к сдвигам строк другими патчами. Полярность active-high берётся из
++ * базового узла (отдельного патча полярности нет; прежний 0006 удалён).
++ * pinmux пада SD0_PWR_EN в GPIO нужен, т.к. boot оставляет fmux=0x0 и линию
++ * HIGH (синий горит всегда). Раннее гашение в boot делает FSBL (patches/fsbl/
++ * 0002), здесь kernel-сторона: pinmux + выключен по умолчанию + лейбл blue.
++ */
++&pinctrl {
++	user_led_cfg: user-led-cfg {
++		user-led-pins {
++			pinmux = <PINMUX(PIN_SD0_PWR_EN, 3)>;
++			power-source = <3300>;
++		};
++	};
++};
++
++&{/leds} {
++	pinctrl-names = "default";
++	pinctrl-0 = <&user_led_cfg>;
++};
++
++&{/leds/user-led} {
++	label = "licheerv-nano:blue:user";
++	/delete-property/ linux,default-trigger;
++	default-state = "off";
++};

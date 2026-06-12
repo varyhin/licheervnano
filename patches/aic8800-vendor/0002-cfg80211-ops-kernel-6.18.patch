@@ -1,0 +1,246 @@
+Назначение: второй раунд compat-патчей для сборки aic8800_fdrv.ko под
+mainline kernel 6.18.29. Закрывает изменения сигнатур cfg80211 ops и
+утилитных нотификаций, которые накопились в API после 6.3.
+
+Где правится:
+- rwnx_main.c
+    struct cfg80211_ops members с новыми сигнатурами в 6.18.29
+    (vendor код был написан под 5.10, далее vendor поддерживал ветки до
+    6.3 через HIGH_KERNEL_VERSION{1..4}).
+    - change_beacon: kernel 6.7+ принимает struct cfg80211_ap_update *
+      вместо cfg80211_beacon_data *. Добавлен обёрточный alias
+      info = &upd->beacon в начало функции, остальной код не меняется.
+    - set_monitor_channel: 6.8+ добавлен struct net_device *dev параметр.
+      Внутренний caller rwnx_cfg80211_set_monitor_channel_ и место вызова
+      из get_channel обновлены под новую сигнатуру через #if-guard.
+    - set_wiphy_params: 6.13+ добавлен int radio_idx параметр.
+    - set_tx_power: 6.13+ добавлен int radio_idx параметр между wdev и
+      type.
+    - get_tx_power: 6.13+ добавлены int radio_idx и unsigned int link_id
+      параметры между wdev и int *mbm.
+    - start_radar_detection: 6.8+ добавлен int link_id параметр в конец.
+    - tdls_mgmt: 6.9+ добавлен int link_id параметр после peer.
+    - cfg80211_ch_switch_notify: 6.9+ убран u16 punct_bitmap параметр
+      (тот, что был добавлен в 6.3 через HIGH_KERNEL_VERSION3). Добавлен
+      новый #if-arm для 6.9+ который вызывает 3-арг версию.
+    - cfg80211_ch_switch_started_notify: 6.9+ убран u16 punct_bitmap.
+      Аналогичный новый arm для 6.9+ с 5-арг сигнатурой.
+
+- rwnx_radar.c
+    cfg80211_cac_event: 6.9+ добавлен unsigned int link_id параметр в
+    конец. Передаём 0 (single link).
+
+- rwnx_rx.c
+    cfg80211_rx_spurious_frame и cfg80211_rx_unexpected_4addr_frame:
+    оба получили int link_id параметр в 6.9+. Передаём -1 (link
+    unknown).
+
+Threshold KERNEL_VERSION(6, 9, 0) выбран как граница «новой волны»
+изменений cfg80211 ops; KERNEL_VERSION(6, 13, 0) для radio_idx wave
+(multi-radio support). Для kernel 6.18.29 (наша цель) сигнатуры
+выровнены с include/net/cfg80211.h и driver компилируется и линкуется
+полностью.
+
+Что нужно ещё на этапе сборки:
+- KBUILD_EXTRA_SYMBOLS=$PWD/src/aic8800-vendor/aic8800_bsp/Module.symvers
+  при make M=... для fdrv (bsp.ko должен быть собран первым).
+- CONFIG_SDIO_BT=n на time being, т.к. CONFIG_BT=n в нашем .config и
+  hci_alloc_dev_priv/hci_free_dev/hci_unregister_dev из btsdio.c
+  невозможно зарезолвить. Включить CONFIG_BT=m в .config и пересобрать
+  kernel если нужен AIC8800 Bluetooth.
+
+Проверено:
+- src/aic8800-vendor/aic8800_fdrv/aic8800_fdrv.ko 1.0 MB
+- vermagic=6.18.29 SMP mod_unload riscv
+- depends=cfg80211,aic8800_bsp
+- alias=sdio:c*vC8A1d2082*, sdio:c*vC8A1d0082*, sdio:c*vC8A1dC08D*
+  (AIC8800D80 будет matched по dC08D)
+
+Ещё открыто на ходу (TODO следующий раунд):
+- Установка aic8800_bsp.ko, aic8800_fdrv.ko и firmware blobs в rootfs.
+- Проверка на железе W варианта.
+
+--- a/aic8800_fdrv/rwnx_main.c	2026-05-25 17:53:00.692151012 +0300
++++ b/aic8800_fdrv/rwnx_main.c	2026-05-26 10:32:27.317874570 +0300
+@@ -797,7 +797,9 @@
+ 		} else
+ 			rwnx_txq_vif_stop(vif, RWNX_TXQ_STOP_CHAN, rwnx_hw);
+ 		spin_unlock_bh(&rwnx_hw->cb_lock);
+-#if (LINUX_VERSION_CODE >= HIGH_KERNEL_VERSION3)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
++		cfg80211_ch_switch_notify(vif->ndev, &csa->chandef, 0);
++#elif (LINUX_VERSION_CODE >= HIGH_KERNEL_VERSION3)
+ 		cfg80211_ch_switch_notify(vif->ndev, &csa->chandef, 0, 0);
+ #elif (LINUX_VERSION_CODE >= HIGH_KERNEL_VERSION)
+ 		cfg80211_ch_switch_notify(vif->ndev, &csa->chandef, 0);
+@@ -3456,8 +3458,13 @@
+  * @change_beacon: Change the beacon parameters for an access point mode
+  *	interface. This should reject the call when AP mode wasn't started.
+  */
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)
++static int rwnx_cfg80211_change_beacon(struct wiphy *wiphy, struct net_device *dev,
++									   struct cfg80211_ap_update *upd)
++#else
+ static int rwnx_cfg80211_change_beacon(struct wiphy *wiphy, struct net_device *dev,
+ 									   struct cfg80211_beacon_data *info)
++#endif
+ {
+ 	struct rwnx_hw *rwnx_hw = wiphy_priv(wiphy);
+ 	struct rwnx_vif *vif = netdev_priv(dev);
+@@ -3465,6 +3472,9 @@
+ 	struct rwnx_ipc_elem_var elem;
+ 	u8 *buf;
+ 	int error = 0;
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)
++	struct cfg80211_beacon_data *info = &upd->beacon;
++#endif
+ 	elem.dma_addr = 0;
+ 
+ 	RWNX_DBG(RWNX_FN_ENTRY_STR);
+@@ -3550,6 +3560,9 @@
+  * configured at firmware level.
+  */
+ static int rwnx_cfg80211_set_monitor_channel(struct wiphy *wiphy,
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
++											 struct net_device *dev,
++#endif
+ 											 struct cfg80211_chan_def *chandef)
+ {
+ 	struct rwnx_hw *rwnx_hw = wiphy_priv(wiphy);
+@@ -3604,7 +3617,11 @@
+ 
+ int rwnx_cfg80211_set_monitor_channel_(struct wiphy *wiphy,
+                                              struct cfg80211_chan_def *chandef){
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
++    return rwnx_cfg80211_set_monitor_channel(wiphy, NULL, chandef);
++#else
+     return rwnx_cfg80211_set_monitor_channel(wiphy, chandef);
++#endif
+ }
+ 
+ 
+@@ -3661,7 +3678,11 @@
+  *	have changed. The actual parameter values are available in
+  *	struct wiphy. If returning an error, no value should be changed.
+  */
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
++static int rwnx_cfg80211_set_wiphy_params(struct wiphy *wiphy, int radio_idx, u32 changed)
++#else
+ static int rwnx_cfg80211_set_wiphy_params(struct wiphy *wiphy, u32 changed)
++#endif
+ {
+ 	return 0;
+ }
+@@ -3675,6 +3696,9 @@
+  *	(as advertised by the nl80211 feature flag.)
+  */
+ static int rwnx_cfg80211_set_tx_power(struct wiphy *wiphy, struct wireless_dev *wdev,
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
++									  int radio_idx,
++#endif
+ 									  enum nl80211_tx_power_setting type, int mbm)
+ {
+ 	struct rwnx_hw *rwnx_hw = wiphy_priv(wiphy);
+@@ -3706,6 +3730,10 @@
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
+  struct wireless_dev *wdev,
+ #endif
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
++	int radio_idx,
++	unsigned int link_id,
++#endif
+ 	int *mbm)
+ {
+     #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 8, 0)
+@@ -4023,7 +4051,11 @@
+ 
+ 	if (rwnx_vif->vif_index == rwnx_hw->monitor_vif) {
+ 		//retrieve channel from firmware
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
++		rwnx_cfg80211_set_monitor_channel(wiphy, NULL, NULL);
++#else
+ 		rwnx_cfg80211_set_monitor_channel(wiphy, NULL);
++#endif
+ 	}
+ 
+ 	//Check if channel context is valid
+@@ -4169,6 +4201,9 @@
+ 									#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 15, 0))
+ 										, u32 cac_time_ms
+ 									#endif
++									#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0))
++										, int link_id
++									#endif
+ 										)
+ {
+ 	struct rwnx_hw *rwnx_hw = wiphy_priv(wiphy);
+@@ -4309,7 +4344,9 @@
+ 		goto end;
+ 	} else {
+ 		INIT_WORK(&csa->work, rwnx_csa_finish);
+-#if LINUX_VERSION_CODE >= HIGH_KERNEL_VERSION4
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
++		cfg80211_ch_switch_started_notify(dev, &csa->chandef, 0, params->count, false);
++#elif LINUX_VERSION_CODE >= HIGH_KERNEL_VERSION4
+ 		cfg80211_ch_switch_started_notify(dev, &csa->chandef, 0, params->count, false, 0);
+ #elif LINUX_VERSION_CODE >= HIGH_KERNEL_VERSION2
+ 		cfg80211_ch_switch_started_notify(dev, &csa->chandef, 0, params->count, false);
+@@ -4343,6 +4380,9 @@
+ #else
+ 	u8 *peer,
+ #endif
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
++	int link_id,
++#endif
+ 	u8 action_code,
+ 	u8 dialog_token,
+ 	u16 status_code,
+--- a/aic8800_fdrv/rwnx_radar.c	2026-05-25 17:18:50.767303675 +0300
++++ b/aic8800_fdrv/rwnx_radar.c	2026-05-26 10:31:37.054185867 +0300
+@@ -1505,7 +1505,11 @@
+ 					#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
+ 					   &ctxt->chan_def,
+ 					#endif
+-					   NL80211_RADAR_CAC_FINISHED, GFP_KERNEL);
++					   NL80211_RADAR_CAC_FINISHED, GFP_KERNEL
++					#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
++					   , 0
++					#endif
++					   );
+ 	rwnx_send_apm_stop_cac_req(rwnx_hw, radar->cac_vif);
+ 	rwnx_chanctx_unlink(radar->cac_vif);
+ 
+@@ -1642,7 +1646,11 @@
+ 						#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
+ 						   &ctxt->chan_def,
+ 						#endif
+-						   NL80211_RADAR_CAC_ABORTED, GFP_KERNEL);
++						   NL80211_RADAR_CAC_ABORTED, GFP_KERNEL
++						#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
++						   , 0
++						#endif
++						   );
+ 		rwnx_chanctx_unlink(radar->cac_vif);
+ 	}
+ 
+--- a/aic8800_fdrv/rwnx_rx.c	2026-05-25 17:18:50.767303675 +0300
++++ b/aic8800_fdrv/rwnx_rx.c	2026-05-26 10:32:03.083975796 +0300
+@@ -2281,6 +2281,8 @@
+ 		if (rwnx_vif) {
+ #ifdef CONFIG_GKI
+ 			rwnx_cfg80211_rx_spurious_frame(rwnx_vif->ndev, hdr->addr2, GFP_ATOMIC);
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
++            cfg80211_rx_spurious_frame(rwnx_vif->ndev, hdr->addr2, -1, GFP_ATOMIC);
+ #else
+             cfg80211_rx_spurious_frame(rwnx_vif->ndev, hdr->addr2, GFP_ATOMIC);
+ #endif
+@@ -2592,6 +2594,9 @@
+ #ifdef CONFIG_GKI
+ 					rwnx_cfg80211_rx_unexpected_4addr_frame(rwnx_vif->ndev,
+ 													   sta->mac_addr, GFP_ATOMIC);
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
++                    cfg80211_rx_unexpected_4addr_frame(rwnx_vif->ndev,
++                                                       sta->mac_addr, -1, GFP_ATOMIC);
+ #else
+                     cfg80211_rx_unexpected_4addr_frame(rwnx_vif->ndev,
+                                                        sta->mac_addr, GFP_ATOMIC);

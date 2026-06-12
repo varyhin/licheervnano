@@ -1,0 +1,56 @@
+Назначение: добавить DT-узел NPU/TPU 1 TOPS в cv181x.dtsi для SG2002.
+
+Узел под форвард-портнутый vendor-драйвер soph_tpu (compatible
+"cvitek,tpu", HAL "mars" = cv181x). Драйвер живёт out-of-tree в
+src/cvitek-tpu-vendor/ (см. docs/tpu_setup.md, патч
+patches/cvitek-tpu-vendor/0001).
+
+Узел помещён в cv181x.dtsi (а не cv180x.dtsi), потому что это блок
+cv181x-семейства и не должен задевать cv1800b-платы. Покрывает разом
+все четыре board-варианта B/E/W/WE (они включают sg2002.dtsi ->
+cv181x.dtsi).
+
+DT-сторона целиком на mainline-ссылках, без out-of-tree биндингов:
+  - клоки CLK_TPU/CLK_TPU_FAB реализованы в drivers/clk/sophgo/clk-cv1800.c
+  - ресеты RST_TDMA/RST_TPU/RST_TPUSYS в arch/.../sophgo/cv18xx-reset.h
+  - reg: tdma 0xc100000 + tiu 0xc101000 (по 0x1000)
+  - IRQ: tiu=75, tdma=76. SOC_PERIPHERAL_IRQ(n)=n+16, поэтому
+    IRQ(59)=75, IRQ(60)=76 (откалибровано по vendor saradc 0x64=IRQ(84)).
+
+Драйвер запрашивает только tdma (platform_get_irq index 1), tiu
+опрашивается поллингом. Порядок interrupts [tiu, tdma] обязателен.
+
+Собранный DTB сверён: resets <0x03 0x07 0x03 0x08 0x03 0x09> и
+interrupts <0x4b 0x04 0x4c 0x04> байт-в-байт совпали с vendor-узлом
+(docs/sophgo_vendor_ko/vendor_dt.dts).
+
+НЕ проверено на железе (нужен boot + insmod soph_tpu + /dev/cvi-tpu0).
+
+--- a/arch/riscv/boot/dts/sophgo/cv181x.dtsi
++++ b/arch/riscv/boot/dts/sophgo/cv181x.dtsi
+@@ -17,5 +17,25 @@ emmc: mmc@4300000 {
+ 			clock-names = "core", "bus";
+ 			status = "disabled";
+ 		};
++
++		/*
++		 * NPU/TPU 1 TOPS (cv181x "mars"). Узел под форвард-портнутый
++		 * vendor-драйвер soph_tpu (compatible "cvitek,tpu"). Все клоки и
++		 * ресеты уже в mainline. tdma 0xc100000 + tiu 0xc101000.
++		 * IRQ: tiu=75=IRQ(59), tdma=76=IRQ(60) (SOC_PERIPHERAL_IRQ(n)=n+16).
++		 * Драйвер запрашивает только tdma (index 1), tiu опрашивается.
++		 */
++		tpu: tpu@c100000 {
++			compatible = "cvitek,tpu";
++			reg = <0xc100000 0x1000>, <0xc101000 0x1000>;
++			reg-names = "tdma", "tiu";
++			clocks = <&clk CLK_TPU>, <&clk CLK_TPU_FAB>;
++			clock-names = "clk_tpu_axi", "clk_tpu_fab";
++			resets = <&rst RST_TDMA>, <&rst RST_TPU>, <&rst RST_TPUSYS>;
++			reset-names = "res_tdma", "res_tpu", "res_tpusys";
++			interrupts = <SOC_PERIPHERAL_IRQ(59) IRQ_TYPE_LEVEL_HIGH>,
++				     <SOC_PERIPHERAL_IRQ(60) IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-names = "tiu_irq", "tdma_irq";
++		};
+ 	};
+ };

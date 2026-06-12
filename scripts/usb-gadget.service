@@ -1,0 +1,15 @@
+[Unit]
+Description=USB Gadget (ACM console) on DWC2
+Documentation=https://docs.kernel.org/usb/gadget_configfs.html
+After=sys-kernel-config.mount local-fs.target
+Wants=sys-kernel-config.mount
+ConditionPathExists=/sys/class/udc
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/setup-usb-gadget.sh
+ExecStop=/bin/sh -c 'echo "" > /sys/kernel/config/usb_gadget/g1/UDC 2>/dev/null || true'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

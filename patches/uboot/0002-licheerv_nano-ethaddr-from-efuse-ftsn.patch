@@ -1,0 +1,104 @@
+Назначение: стабильный, привязанный к плате MAC-адрес end0 (E/WE). Без патча
+цепочка такая: U-Boot не задаёт ethaddr (env «nowhere», ethernet-устройства в
+его control-DT нет), Linux stmmac генерирует случайный MAC на каждый boot, а
+udev (MACAddressPolicy=persistent) заменяет его детерминированным от
+/etc/machine-id, забейканного в образ. Итог: MAC ездит с SD-картой, одинаков
+на всех платах из одного образа (коллизия L2 в одной LAN) и меняется при
+пересоздании rootfs.
+
+Фикс: board_late_init() читает заводской серийник кристалла из окна теневых
+регистров eFuse (FTSN0..FTSN4 по 0x03050100, non-secure алиас), сворачивает
+его crc32 в локально-администрируемый MAC (02:xx:...) и кладёт в env ethaddr.
+Штатный fdt_fixup_ethernet() U-Boot вписывает его в local-mac-address узла
+gmac0 по alias ethernet0 (b/w DTB alias не имеют, там fixup тихий no-op).
+MAC детерминирован от кристалла: переживает перепрошивку и перенос карты,
+у разных плат различается.
+
+Замеры на железе 2026-06-12: окно 0x03050100 из S-mode U-Boot читается
+(md.l, FTSN3=0xd1cd511c FTSN4=0x1359c262), а вот из Linux НЕ читается,
+busybox devmem вешает плату: mainline clk-cv1800 гейтит CLK_EFUSE/
+CLK_APB_EFUSE (REG_CLK_EN_0 биты 11/12) как unused. Поэтому деривация
+в U-Boot, не в userspace.
+
+CONFIG_BOARD_LATE_INIT=y включает вызов board_late_init() (common/board_r.c).
+
+--- a/configs/sipeed_licheerv_nano_defconfig
++++ b/configs/sipeed_licheerv_nano_defconfig
+@@ -18,6 +18,7 @@
+ CONFIG_SYS_CBSIZE=512
+ CONFIG_SYS_PBSIZE=544
+ # CONFIG_BOARD_INIT is not set
++CONFIG_BOARD_LATE_INIT=y
+ CONFIG_SYS_PROMPT="licheerv_nano# "
+ # CONFIG_CMD_BOOTDEV is not set
+ CONFIG_CMD_MBR=y
+--- a/board/sophgo/licheerv_nano/board.c
++++ b/board/sophgo/licheerv_nano/board.c
+@@ -3,3 +3,67 @@
+  * Copyright (c) 2024, Kongyang Liu <seashell11234455@gmail.com>
+  */
+ 
++#include <env.h>
++#include <init.h>
++#include <stdio.h>
++#include <asm/io.h>
++#include <linux/types.h>
++#include <u-boot/crc.h>
++
++/*
++ * MAC-адрес end0 из заводского серийника кристалла (eFuse FTSN).
++ *
++ * Окно теневых регистров eFuse 0x03050100 (non-secure алиас) содержит
++ * слова FTSN0..FTSN4. FTSN3/FTSN4 это per-die серийник, FTSN2 несёт
++ * битовые поля leakage/DDR (FSBL выбирает по ним DDR-профиль).
++ * Из S-mode U-Boot окно читается (проверено на железе 2026-06-12).
++ * Из Linux НЕ читается: mainline clk-cv1800 гейтит CLK_EFUSE как
++ * unused, обращение к блоку с выключенным клоком вешает шину. Поэтому
++ * MAC выводится здесь, до Linux.
++ *
++ * Производный MAC локально-администрируемый (первый байт 0x02),
++ * детерминирован от кристалла: переживает перепрошивку и перенос
++ * SD-карты, у разных плат различается. Дальше штатный
++ * fdt_fixup_ethernet() вписывает env ethaddr в local-mac-address
++ * узла gmac0 по alias ethernet0 (есть в e/we DTB; в b/w alias
++ * отсутствует, fixup тихий no-op).
++ */
++#define EFUSE_SHADOW_FTSN0	0x03050100UL
++#define EFUSE_FTSN_WORDS	5
++
++int board_late_init(void)
++{
++	u32 ftsn[EFUSE_FTSN_WORDS];
++	u32 crc_a, crc_b;
++	u8 mac[6];
++	char buf[18];
++	int i;
++
++	/* уважать уже заданный ethaddr (в default env его нет) */
++	if (env_get("ethaddr"))
++		return 0;
++
++	for (i = 0; i < EFUSE_FTSN_WORDS; i++)
++		ftsn[i] = readl((void *)(EFUSE_SHADOW_FTSN0 + 4 * i));
++
++	/* пустой/непрошитый eFuse: оставить штатный путь (random MAC) */
++	if (!(ftsn[2] | ftsn[3] | ftsn[4]))
++		return 0;
++
++	crc_a = crc32(0, (const u8 *)ftsn, sizeof(ftsn));
++	crc_b = crc32(crc_a, (const u8 *)ftsn, sizeof(ftsn));
++
++	mac[0] = 0x02;	/* locally administered, unicast */
++	mac[1] = crc_b & 0xff;
++	mac[2] = (crc_a >> 24) & 0xff;
++	mac[3] = (crc_a >> 16) & 0xff;
++	mac[4] = (crc_a >> 8) & 0xff;
++	mac[5] = crc_a & 0xff;
++
++	snprintf(buf, sizeof(buf), "%02x:%02x:%02x:%02x:%02x:%02x",
++		 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
++	env_set("ethaddr", buf);
++	printf("Net:   ethaddr from eFuse FTSN: %s\n", buf);
++
++	return 0;
++}

@@ -1,0 +1,26 @@
+Назначение: исправить оверлап kernel_addr_r и fdt_addr_r в U-Boot environment
+для платы Sipeed LicheeRV Nano. Upstream-defaults расположены на 0x81000000
+(kernel) и 0x82000000 (fdt), расстояние между ними 16 MiB. Image современного
+mainline-ядра (>16 MiB, у нас 6.18.29 это 27 MiB) при загрузке через extlinux
+своим хвостом перекрывает область, куда extlinux сразу за этим пишет DTB. DTB
+байты остаются внутри хвоста Image, U-Boot переезжает Image на 0x80200000
+вместе с порчей, ядро при чтении excp_vect_table падает по jalr на «мусор»
+(Insufficient stack space to handle exception → kernel stack overflow).
+
+Фикс: грузить kernel сразу на финальный адрес 0x80200000 (vendor Sipeed FIT
+тоже использует Load Address 0x80200000). Тогда Image занимает
+0x80200000-0x81C88000, а DTB на 0x82000000 имеет 30 MiB запаса. U-Boot ещё и
+избегает лишнего memmove на 27 MiB.
+
+diff -urN a/include/configs/licheerv_nano.h b/include/configs/licheerv_nano.h
+--- a/include/configs/licheerv_nano.h	2026-05-13 19:32:00.000000000 +0300
++++ b/include/configs/licheerv_nano.h	2026-05-24 17:00:00.000000000 +0300
+@@ -17,7 +17,7 @@
+ #define CFG_EXTRA_ENV_SETTINGS  "consoledev=ttyS0\0" \
+ 								"baudrate=115200\0" \
+ 								"fdt_addr_r=0x82000000\0" \
+-								"kernel_addr_r=0x81000000\0" \
++								"kernel_addr_r=0x80200000\0" \
+ 								"scriptaddr=0x80c00000\0" \
+ 								BOOTENV
+

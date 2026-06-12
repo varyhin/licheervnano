@@ -1,0 +1,87 @@
+Назначение: активировать UART1 и UART2 в DTS всех 4 вариантов LicheeRV
+Nano (B/E/W/WE). UART1 и UART2 выведены на 2x14-pin header согласно
+Sipeed wiki, доступ к внешним serial-устройствам через GPIOA28/29
+(UART2) и GPIOA18/19 (UART1).
+
+Применяется поверх patches/linux/0001 (который создал sg2002-licheerv-
+nano-e/w/we.dts) и 0004 (i2c), через:
+    git -C src/linux apply patches/linux/0005-licheerv-nano-uart.patch
+
+UART0 уже активен как kernel console (отдельный pinctrl uart0_cfg в
+исходном DTS, pins по PINMUX(PIN_UART0_TX, 0) / PINMUX(PIN_UART0_RX, 0)).
+Aliases serial1 = &uart1, serial2 = &uart2 уже описаны в исходном DTS,
+нумерация /dev/ttyS1 и /dev/ttyS2 стабильная.
+
+UART3 пропущен: его pinmux pin 0x030010D0..DC пересекается с I2C1
+(`&i2c1` использует те же регистры с другим значением FUNCSEL), плюс
+на W/WE вариантах эти пины заняты SDIO под Wi-Fi (AIC8800).
+UART4 у Sipeed не выведен на header (не описан в wiki, mainline
+pinctrl-sg2002 также не содержит именованных пинов под UART4).
+
+Note: pinmux для UART1/UART2 устанавливается runtime через busybox
+devmem в systemd unit setup-uart-pinmux.service (см. Makefile target
+uart-pinmux-install и rootfs/.../setup-uart-pinmux.sh). Mainline
+pinctrl-sg2002 не имеет именованных пинов для этих функций (только
+UART0_TX/RX), поэтому DTS pinctrl не используется. Регистры из Sipeed
+wiki:
+  UART2 TX: 0x03001070 = 0x2 (GPIOA 28)
+  UART2 RX: 0x03001074 = 0x2 (GPIOA 29)
+  UART1 TX: 0x03001064 = 0x6 (GPIOA 19)
+  UART1 RX: 0x03001068 = 0x6 (GPIOA 18)
+
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-b.dts
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-b.dts
+@@ -143,3 +143,11 @@
+ &i2c3 {
+ 	status = "okay";
+ };
++
++&uart1 {
++	status = "okay";
++};
++
++&uart2 {
++	status = "okay";
++};
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-e.dts	2026-05-26 20:19:16.690281536 +0300
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-e.dts	2026-05-26 20:19:57.448959345 +0300
+@@ -159,3 +159,11 @@
+ &i2c3 {
+ 	status = "okay";
+ };
++
++&uart1 {
++	status = "okay";
++};
++
++&uart2 {
++	status = "okay";
++};
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-w.dts
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-w.dts
+@@ -202,3 +202,11 @@
+ &i2c3 {
+ 	status = "okay";
+ };
++
++&uart1 {
++	status = "okay";
++};
++
++&uart2 {
++	status = "okay";
++};
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-we.dts	2026-05-26 20:19:16.690281536 +0300
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-we.dts	2026-05-26 20:19:57.448959345 +0300
+@@ -218,3 +218,11 @@
+ &i2c3 {
+ 	status = "okay";
+ };
++
++&uart1 {
++	status = "okay";
++};
++
++&uart2 {
++	status = "okay";
++};

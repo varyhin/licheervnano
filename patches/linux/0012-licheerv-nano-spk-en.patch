@@ -1,0 +1,85 @@
+Назначение: подключить SPK_EN (GPIOA[15]) к узлу &sound_dac как
+spk-en-gpios на всех 4 board вариантах (B/E/W/WE), чтобы драйвер
+cv1800b-sound-dac включал усилитель AW8010A только на время
+воспроизведения (стрим-гейтинг, см. patch 0013).
+
+Playback-тракт (i2s3 -> internal DAC -> AUD_AOUTR -> AW8010A -> header
+VOP/VON -> внешний speaker) активирован patch'ем 0010. SPK_EN это
+XGPIOA[15], SoC pin 17, gpiochip0 line 15. Без HIGH на этом пине
+AW8010A выключен.
+
+Раньше пин держался всегда HIGH через gpio-hog. Теперь gpio отдан
+драйверу DAC: он поднимает SPK_EN в .trigger START и опускает в STOP,
+поэтому усилитель не питается в покое (меньше потребления и наводок).
+
+pinctrl strict=true, но пады GPIOA по умолчанию в GPIO-режиме
+(подтверждено рабочим user-LED на GPIOA[14]), отдельная pinmux-запись
+для SPK_EN не требуется.
+
+Проверка на железе: в покое `gpioget` линии 15 даёт 0, во время
+`aplay -D spk файл.wav` поднимается в 1. Звук слышно только с внешним
+8 Ом динамиком на header VOP/VON.
+
+Применяется поверх patches/linux/0001 (создал e/w/we dts), 0010
+(активировал sound_dac) и 0013 (драйвер читает spk-en) через:
+    git -C src/linux apply patches/linux/0012-licheerv-nano-spk-en.patch
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-b.dts
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-b.dts
+@@ -217,3 +217,12 @@
+ 		};
+ 	};
+ };
++
++/*
++ * SPK_EN (GPIOA[15], SoC pin 17) включает усилитель AW8010A. Привязан к
++ * playback-стриму драйвером cv1800b-sound-dac (gpio "spk-en"), поэтому amp
++ * питается только во время воспроизведения. См. patch 0013.
++ */
++&sound_dac {
++	spk-en-gpios = <&porta 15 GPIO_ACTIVE_HIGH>;
++};
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-e.dts
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-e.dts
+@@ -233,3 +233,12 @@
+ 		};
+ 	};
+ };
++
++/*
++ * SPK_EN (GPIOA[15], SoC pin 17) включает усилитель AW8010A. Привязан к
++ * playback-стриму драйвером cv1800b-sound-dac (gpio "spk-en"), поэтому amp
++ * питается только во время воспроизведения. См. patch 0013.
++ */
++&sound_dac {
++	spk-en-gpios = <&porta 15 GPIO_ACTIVE_HIGH>;
++};
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-w.dts
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-w.dts
+@@ -276,3 +276,12 @@
+ 		};
+ 	};
+ };
++
++/*
++ * SPK_EN (GPIOA[15], SoC pin 17) включает усилитель AW8010A. Привязан к
++ * playback-стриму драйвером cv1800b-sound-dac (gpio "spk-en"), поэтому amp
++ * питается только во время воспроизведения. См. patch 0013.
++ */
++&sound_dac {
++	spk-en-gpios = <&porta 15 GPIO_ACTIVE_HIGH>;
++};
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-we.dts
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-we.dts
+@@ -292,3 +292,12 @@
+ 		};
+ 	};
+ };
++
++/*
++ * SPK_EN (GPIOA[15], SoC pin 17) включает усилитель AW8010A. Привязан к
++ * playback-стриму драйвером cv1800b-sound-dac (gpio "spk-en"), поэтому amp
++ * питается только во время воспроизведения. См. patch 0013.
++ */
++&sound_dac {
++	spk-en-gpios = <&porta 15 GPIO_ACTIVE_HIGH>;
++};

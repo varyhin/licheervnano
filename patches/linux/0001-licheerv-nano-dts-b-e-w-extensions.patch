@@ -1,0 +1,674 @@
+Назначение: расширить mainline DTS под три варианта LicheeRV Nano и
+включить дополнительную периферию.
+
+Применяется поверх чистого snapshot src/linux v6.18.29 через:
+    git -C src/linux apply patches/linux/0001-licheerv-nano-dts-b-e-w-extensions.patch
+
+Состав:
+- arch/riscv/boot/dts/sophgo/Makefile
+    добавляет сборку sg2002-licheerv-nano-e.dtb, sg2002-licheerv-nano-w.dtb и
+    sg2002-licheerv-nano-we.dtb
+- arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-b.dts
+    расширяет mainline вариант B: USER LED на porta 14, USER Button на porta 30,
+    reserved-memory для cvirtos на 0x83f40000 (768 KiB no-map),
+    saradc включён, плюс #include для GPIO и input-event кодов
+- arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-e.dts (новый)
+    вариант E (100M Ethernet): то же что B + ephy_init enabled
+    (нужен CONFIG_CV1800B_EPHY_INIT=y, см. patches/linux/0003) +
+    mdio mux enabled (нужен CONFIG_MDIO_BUS_MUX_MMIOREG=m) + gmac0 enabled
+- arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-w.dts (новый)
+    вариант W (Wi-Fi 6 + BT 5 на AIC8800 через SDIO):
+    то же что B + sdhci1 enabled + mmc-pwrseq-simple с reset-gpios на porta 26
+- arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-we.dts (новый)
+    вариант WE (Ethernet + Wi-Fi 6 + BT 5 одновременно): объединение E и W
+    в одном dts, толерантен к отсутствующему железу (gmac0/sdhci1 идут idle
+    если PHY или AIC8800 физически отсутствуют). Используется как default
+    в extlinux меню.
+
+Источник истины каждого .dts это патчи в patches/linux/ (полное содержимое
+e/w/we встроено ниже, b расширяется хунком). Отдельного каталога dts/ в корне
+больше нет. При правке DTS regenerate патч из пропатченного src/linux
+(baseline через make patches-revert && make patches-apply; см. CLAUDE.md,
+раздел про регенерацию патчей).
+
+diff -urN a/arch/riscv/boot/dts/sophgo/Makefile b/arch/riscv/boot/dts/sophgo/Makefile
+--- a/arch/riscv/boot/dts/sophgo/Makefile	2026-05-25 16:18:07.250168041 +0300
++++ b/arch/riscv/boot/dts/sophgo/Makefile	2026-05-25 16:18:07.278174206 +0300
+@@ -2,6 +2,9 @@
+ dtb-$(CONFIG_ARCH_SOPHGO) += cv1800b-milkv-duo.dtb
+ dtb-$(CONFIG_ARCH_SOPHGO) += cv1812h-huashan-pi.dtb
+ dtb-$(CONFIG_ARCH_SOPHGO) += sg2002-licheerv-nano-b.dtb
++dtb-$(CONFIG_ARCH_SOPHGO) += sg2002-licheerv-nano-e.dtb
++dtb-$(CONFIG_ARCH_SOPHGO) += sg2002-licheerv-nano-w.dtb
++dtb-$(CONFIG_ARCH_SOPHGO) += sg2002-licheerv-nano-we.dtb
+ dtb-$(CONFIG_ARCH_SOPHGO) += sg2042-milkv-pioneer.dtb
+ dtb-$(CONFIG_ARCH_SOPHGO) += sg2042-evb-v1.dtb
+ dtb-$(CONFIG_ARCH_SOPHGO) += sg2042-evb-v2.dtb
+diff -urN a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-b.dts b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-b.dts
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-b.dts
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-b.dts
+@@ -6,6 +6,9 @@
+ /dts-v1/;
+ 
+ #include "sg2002.dtsi"
++
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/input/linux-event-codes.h>
+ 
+ / {
+ 	model = "LicheeRV Nano B";
+@@ -26,7 +29,40 @@
+ 	chosen {
+ 		stdout-path = "serial0:115200n8";
+ 	};
++
++	reserved-memory {
++		#address-cells = <1>;
++		#size-cells = <1>;
++		ranges;
++
++		coprocessor_rtos: region@83f40000 {
++			reg = <0x83f40000 0xc0000>;
++			no-map;
++		};
++	};
++
++	gpio-keys {
++		compatible = "gpio-keys";
++
++		user-button {
++			label = "user";
++			linux,code = <KEY_DISPLAYTOGGLE>;
++			debounce-interval = <10>;
++			gpios = <&porta 30 GPIO_ACTIVE_LOW>;
++		};
++	};
++
++	leds {
++		compatible = "gpio-leds";
++
++		user-led {
++			label = "licheerv-nano:green:user";
++			gpios = <&porta 14 GPIO_ACTIVE_HIGH>;
++			linux,default-trigger = "mmc0";
++		};
++	};
+ };
++
+ 
+ &osc {
+ 	clock-frequency = <25000000>;
+@@ -93,3 +129,7 @@
+ 	pinctrl-names = "default";
+ 	status = "okay";
+ };
++
++&saradc {
++	status = "okay";
++};
+diff -urN a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-e.dts b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-e.dts
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-e.dts	1970-01-01 03:00:00.000000000 +0300
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-e.dts	2026-05-25 16:18:07.258169803 +0300
+@@ -0,0 +1,151 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * LicheeRV Nano E (Ethernet variant)
++ *
++ * Based on sg2002-licheerv-nano-b.dts by Thomas Bonnefille.
++ * Difference vs B: on-board RJ45 wired to SG2002 internal MAC + internal PHY,
++ * so we enable gmac0 (otherwise identical hardware).
++ */
++
++/dts-v1/;
++
++#include "sg2002.dtsi"
++
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/input/linux-event-codes.h>
++
++/ {
++	model = "LicheeRV Nano E";
++	compatible = "sipeed,licheerv-nano-e", "sipeed,licheerv-nano", "sophgo,sg2002";
++
++	aliases {
++		gpio0 = &gpio0;
++		gpio1 = &gpio1;
++		gpio2 = &gpio2;
++		gpio3 = &gpio3;
++		serial0 = &uart0;
++		serial1 = &uart1;
++		serial2 = &uart2;
++		serial3 = &uart3;
++		serial4 = &uart4;
++		ethernet0 = &gmac0;
++	};
++
++	chosen {
++		stdout-path = "serial0:115200n8";
++	};
++
++	reserved-memory {
++		#address-cells = <1>;
++		#size-cells = <1>;
++		ranges;
++
++		coprocessor_rtos: region@83f40000 {
++			reg = <0x83f40000 0xc0000>;
++			no-map;
++		};
++	};
++
++	gpio-keys {
++		compatible = "gpio-keys";
++
++		user-button {
++			label = "user";
++			linux,code = <KEY_DISPLAYTOGGLE>;
++			debounce-interval = <10>;
++			gpios = <&porta 30 GPIO_ACTIVE_LOW>;
++		};
++	};
++
++	leds {
++		compatible = "gpio-leds";
++
++		user-led {
++			label = "licheerv-nano:green:user";
++			gpios = <&porta 14 GPIO_ACTIVE_HIGH>;
++			linux,default-trigger = "mmc0";
++		};
++	};
++};
++
++&osc {
++	clock-frequency = <25000000>;
++};
++
++&pinctrl {
++	uart0_cfg: uart0-cfg {
++		uart0-pins {
++			pinmux = <PINMUX(PIN_UART0_TX, 0)>,
++				 <PINMUX(PIN_UART0_RX, 0)>;
++			bias-pull-up;
++			drive-strength-microamp = <10800>;
++			power-source = <3300>;
++		};
++	};
++
++	sdhci0_cfg: sdhci0-cfg {
++		sdhci0-clk-pins {
++			pinmux = <PINMUX(PIN_SD0_CLK, 0)>;
++			bias-pull-up;
++			drive-strength-microamp = <16100>;
++			power-source = <3300>;
++		};
++
++		sdhci0-cmd-pins {
++			pinmux = <PINMUX(PIN_SD0_CMD, 0)>;
++			bias-pull-up;
++			drive-strength-microamp = <10800>;
++			power-source = <3300>;
++		};
++
++		sdhci0-data-pins {
++			pinmux = <PINMUX(PIN_SD0_D0, 0)>,
++				 <PINMUX(PIN_SD0_D1, 0)>,
++				 <PINMUX(PIN_SD0_D2, 0)>,
++				 <PINMUX(PIN_SD0_D3, 0)>;
++			bias-pull-up;
++			drive-strength-microamp = <10800>;
++			power-source = <3300>;
++		};
++
++		sdhci0-cd-pins {
++			pinmux = <PINMUX(PIN_SD0_CD, 0)>;
++			bias-pull-up;
++			drive-strength-microamp = <10800>;
++			power-source = <3300>;
++		};
++	};
++};
++
++&sdhci0 {
++	pinctrl-0 = <&sdhci0_cfg>;
++	pinctrl-names = "default";
++	status = "okay";
++	bus-width = <4>;
++	no-1-8-v;
++	no-mmc;
++	no-sdio;
++	disable-wp;
++};
++
++&uart0 {
++	pinctrl-0 = <&uart0_cfg>;
++	pinctrl-names = "default";
++	status = "okay";
++};
++
++&ephy_init {
++	status = "okay";
++};
++
++&mdio {
++	status = "okay";
++};
++
++&gmac0 {
++	status = "okay";
++};
++
++&saradc {
++	status = "okay";
++};
+diff -urN a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-w.dts b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-w.dts
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-w.dts	1970-01-01 03:00:00.000000000 +0300
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-w.dts	2026-05-25 16:18:07.262170683 +0300
+@@ -0,0 +1,193 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * LicheeRV Nano W (Wi-Fi6 + BT5.4 variant on AIC8800D80 via SDIO)
++ *
++ * Based on sg2002-licheerv-nano-b.dts by Thomas Bonnefille.
++ * Difference vs B: on-board AICSemi AIC8800D80 attached to sdhci1 (SDIO),
++ * with vendor power/reset on GPIOA bit 26 (per sipeed/LicheeRV-Nano-Build
++ * build/boards/sg200x/sg2002_licheervnano_sd/u-boot/cvi_board_init.c).
++ *
++ * Note: BT half on the same chip is wired to UART-HCI but the 4×0201
++ * resistors near the module are not populated by default. This DTS exposes
++ * only the Wi-Fi half.
++ */
++
++/dts-v1/;
++
++#include "sg2002.dtsi"
++
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/input/linux-event-codes.h>
++
++/ {
++	model = "LicheeRV Nano W";
++	compatible = "sipeed,licheerv-nano-w", "sipeed,licheerv-nano", "sophgo,sg2002";
++
++	aliases {
++		gpio0 = &gpio0;
++		gpio1 = &gpio1;
++		gpio2 = &gpio2;
++		gpio3 = &gpio3;
++		serial0 = &uart0;
++		serial1 = &uart1;
++		serial2 = &uart2;
++		serial3 = &uart3;
++		serial4 = &uart4;
++	};
++
++	chosen {
++		stdout-path = "serial0:115200n8";
++	};
++
++	reserved-memory {
++		#address-cells = <1>;
++		#size-cells = <1>;
++		ranges;
++
++		coprocessor_rtos: region@83f40000 {
++			reg = <0x83f40000 0xc0000>;
++			no-map;
++		};
++	};
++
++	wifi_pwrseq: wifi-pwrseq {
++		compatible = "mmc-pwrseq-simple";
++		reset-gpios = <&porta 26 GPIO_ACTIVE_LOW>;
++		post-power-on-delay-ms = <50>;
++	};
++
++	gpio-keys {
++		compatible = "gpio-keys";
++
++		user-button {
++			label = "user";
++			linux,code = <KEY_DISPLAYTOGGLE>;
++			debounce-interval = <10>;
++			gpios = <&porta 30 GPIO_ACTIVE_LOW>;
++		};
++	};
++
++	leds {
++		compatible = "gpio-leds";
++
++		user-led {
++			label = "licheerv-nano:green:user";
++			gpios = <&porta 14 GPIO_ACTIVE_HIGH>;
++			linux,default-trigger = "mmc0";
++		};
++	};
++};
++
++&osc {
++	clock-frequency = <25000000>;
++};
++
++&pinctrl {
++	uart0_cfg: uart0-cfg {
++		uart0-pins {
++			pinmux = <PINMUX(PIN_UART0_TX, 0)>,
++				 <PINMUX(PIN_UART0_RX, 0)>;
++			bias-pull-up;
++			drive-strength-microamp = <10800>;
++			power-source = <3300>;
++		};
++	};
++
++	sdhci0_cfg: sdhci0-cfg {
++		sdhci0-clk-pins {
++			pinmux = <PINMUX(PIN_SD0_CLK, 0)>;
++			bias-pull-up;
++			drive-strength-microamp = <16100>;
++			power-source = <3300>;
++		};
++
++		sdhci0-cmd-pins {
++			pinmux = <PINMUX(PIN_SD0_CMD, 0)>;
++			bias-pull-up;
++			drive-strength-microamp = <10800>;
++			power-source = <3300>;
++		};
++
++		sdhci0-data-pins {
++			pinmux = <PINMUX(PIN_SD0_D0, 0)>,
++				 <PINMUX(PIN_SD0_D1, 0)>,
++				 <PINMUX(PIN_SD0_D2, 0)>,
++				 <PINMUX(PIN_SD0_D3, 0)>;
++			bias-pull-up;
++			drive-strength-microamp = <10800>;
++			power-source = <3300>;
++		};
++
++		sdhci0-cd-pins {
++			pinmux = <PINMUX(PIN_SD0_CD, 0)>;
++			bias-pull-up;
++			drive-strength-microamp = <10800>;
++			power-source = <3300>;
++		};
++	};
++
++	sdhci1_cfg: sdhci1-cfg {
++		sdhci1-clk-pins {
++			pinmux = <PINMUX(PIN_SD1_CLK, 0)>;
++			bias-pull-up;
++			drive-strength-microamp = <16100>;
++			power-source = <3300>;
++		};
++		sdhci1-cmd-pins {
++			pinmux = <PINMUX(PIN_SD1_CMD, 0)>;
++			bias-pull-up;
++			drive-strength-microamp = <10800>;
++			power-source = <3300>;
++		};
++		sdhci1-data-pins {
++			pinmux = <PINMUX(PIN_SD1_D0, 0)>,
++				 <PINMUX(PIN_SD1_D1, 0)>,
++				 <PINMUX(PIN_SD1_D2, 0)>,
++				 <PINMUX(PIN_SD1_D3, 0)>;
++			bias-pull-up;
++			drive-strength-microamp = <10800>;
++			power-source = <3300>;
++		};
++	};
++};
++
++&sdhci0 {
++	pinctrl-0 = <&sdhci0_cfg>;
++	pinctrl-names = "default";
++	status = "okay";
++	bus-width = <4>;
++	no-1-8-v;
++	no-mmc;
++	no-sdio;
++	disable-wp;
++};
++
++&sdhci1 {
++	pinctrl-0 = <&sdhci1_cfg>;
++	pinctrl-names = "default";
++	status = "okay";
++	bus-width = <4>;
++	max-frequency = <25000000>;
++	no-1-8-v;
++	non-removable;
++	no-mmc;
++	no-sd;
++	mmc-pwrseq = <&wifi_pwrseq>;
++	#address-cells = <1>;
++	#size-cells = <0>;
++
++	wifi@1 {
++		reg = <1>;
++		/* aic8800_fdrv binds via SDIO VID:PID, no DT compatible needed */
++	};
++};
++
++&uart0 {
++	pinctrl-0 = <&uart0_cfg>;
++	pinctrl-names = "default";
++	status = "okay";
++};
++
++&saradc {
++	status = "okay";
++};
+diff -urN a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-we.dts b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-we.dts
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-we.dts	1970-01-01 03:00:00.000000000 +0300
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-we.dts	2026-05-26 14:36:00.000000000 +0300
+@@ -0,0 +1,210 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * LicheeRV Nano WE (Ethernet + Wi-Fi 6 + BT 5 одновременно)
++ *
++ * Based on sg2002-licheerv-nano-b.dts by Thomas Bonnefille.
++ * Объединение вариантов E и W: gmac0 (internal PHY через RMII) +
++ * sdhci1 (SDIO) с AIC8800 combo Wi-Fi/BT.
++ *
++ * Этот DTS используется как default-вариант extlinux меню. Он толерантен
++ * к отсутствующему железу:
++ *  - на B плате (нет Ethernet PHY, нет AIC8800): gmac0 не найдёт PHY,
++ *    mmc1 не найдёт SDIO card, оба узла просто idle
++ *  - на E плате (есть Ethernet, нет AIC8800): gmac0 поднимается как end0,
++ *    mmc1 idle
++ *  - на W плате (нет Ethernet, есть AIC8800): mmc1 находит AIC8800,
++ *    fdrv грузит wlan0+hci0, gmac0 idle
++ */
++
++/dts-v1/;
++
++#include "sg2002.dtsi"
++
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/input/linux-event-codes.h>
++
++/ {
++	model = "LicheeRV Nano WE";
++	compatible = "sipeed,licheerv-nano-we", "sipeed,licheerv-nano", "sophgo,sg2002";
++
++	aliases {
++		gpio0 = &gpio0;
++		gpio1 = &gpio1;
++		gpio2 = &gpio2;
++		gpio3 = &gpio3;
++		serial0 = &uart0;
++		serial1 = &uart1;
++		serial2 = &uart2;
++		serial3 = &uart3;
++		serial4 = &uart4;
++		ethernet0 = &gmac0;
++	};
++
++	chosen {
++		stdout-path = "serial0:115200n8";
++	};
++
++	reserved-memory {
++		#address-cells = <1>;
++		#size-cells = <1>;
++		ranges;
++
++		coprocessor_rtos: region@83f40000 {
++			reg = <0x83f40000 0xc0000>;
++			no-map;
++		};
++	};
++
++	wifi_pwrseq: wifi-pwrseq {
++		compatible = "mmc-pwrseq-simple";
++		reset-gpios = <&porta 26 GPIO_ACTIVE_LOW>;
++		post-power-on-delay-ms = <50>;
++	};
++
++	gpio-keys {
++		compatible = "gpio-keys";
++
++		user-button {
++			label = "user";
++			linux,code = <KEY_DISPLAYTOGGLE>;
++			debounce-interval = <10>;
++			gpios = <&porta 30 GPIO_ACTIVE_LOW>;
++		};
++	};
++
++	leds {
++		compatible = "gpio-leds";
++
++		user-led {
++			label = "licheerv-nano:green:user";
++			gpios = <&porta 14 GPIO_ACTIVE_HIGH>;
++			linux,default-trigger = "mmc0";
++		};
++	};
++};
++
++&osc {
++	clock-frequency = <25000000>;
++};
++
++&pinctrl {
++	uart0_cfg: uart0-cfg {
++		uart0-pins {
++			pinmux = <PINMUX(PIN_UART0_TX, 0)>,
++				 <PINMUX(PIN_UART0_RX, 0)>;
++			bias-pull-up;
++			drive-strength-microamp = <10800>;
++			power-source = <3300>;
++		};
++	};
++
++	sdhci0_cfg: sdhci0-cfg {
++		sdhci0-clk-pins {
++			pinmux = <PINMUX(PIN_SD0_CLK, 0)>;
++			bias-pull-up;
++			drive-strength-microamp = <16100>;
++			power-source = <3300>;
++		};
++
++		sdhci0-cmd-pins {
++			pinmux = <PINMUX(PIN_SD0_CMD, 0)>;
++			bias-pull-up;
++			drive-strength-microamp = <10800>;
++			power-source = <3300>;
++		};
++
++		sdhci0-data-pins {
++			pinmux = <PINMUX(PIN_SD0_D0, 0)>,
++				 <PINMUX(PIN_SD0_D1, 0)>,
++				 <PINMUX(PIN_SD0_D2, 0)>,
++				 <PINMUX(PIN_SD0_D3, 0)>;
++			bias-pull-up;
++			drive-strength-microamp = <10800>;
++			power-source = <3300>;
++		};
++
++		sdhci0-cd-pins {
++			pinmux = <PINMUX(PIN_SD0_CD, 0)>;
++			bias-pull-up;
++			drive-strength-microamp = <10800>;
++			power-source = <3300>;
++		};
++	};
++
++	sdhci1_cfg: sdhci1-cfg {
++		sdhci1-clk-pins {
++			pinmux = <PINMUX(PIN_SD1_CLK, 0)>;
++			bias-pull-up;
++			drive-strength-microamp = <16100>;
++			power-source = <3300>;
++		};
++		sdhci1-cmd-pins {
++			pinmux = <PINMUX(PIN_SD1_CMD, 0)>;
++			bias-pull-up;
++			drive-strength-microamp = <10800>;
++			power-source = <3300>;
++		};
++		sdhci1-data-pins {
++			pinmux = <PINMUX(PIN_SD1_D0, 0)>,
++				 <PINMUX(PIN_SD1_D1, 0)>,
++				 <PINMUX(PIN_SD1_D2, 0)>,
++				 <PINMUX(PIN_SD1_D3, 0)>;
++			bias-pull-up;
++			drive-strength-microamp = <10800>;
++			power-source = <3300>;
++		};
++	};
++};
++
++&sdhci0 {
++	pinctrl-0 = <&sdhci0_cfg>;
++	pinctrl-names = "default";
++	status = "okay";
++	bus-width = <4>;
++	no-1-8-v;
++	no-mmc;
++	no-sdio;
++	disable-wp;
++};
++
++&sdhci1 {
++	pinctrl-0 = <&sdhci1_cfg>;
++	pinctrl-names = "default";
++	status = "okay";
++	bus-width = <4>;
++	max-frequency = <25000000>;
++	no-1-8-v;
++	non-removable;
++	no-mmc;
++	no-sd;
++	mmc-pwrseq = <&wifi_pwrseq>;
++	#address-cells = <1>;
++	#size-cells = <0>;
++
++	wifi@1 {
++		reg = <1>;
++		/* aic8800_fdrv binds via SDIO VID:PID, no DT compatible needed */
++	};
++};
++
++&uart0 {
++	pinctrl-0 = <&uart0_cfg>;
++	pinctrl-names = "default";
++	status = "okay";
++};
++
++&ephy_init {
++	status = "okay";
++};
++
++&mdio {
++	status = "okay";
++};
++
++&gmac0 {
++	status = "okay";
++};
++
++&saradc {
++	status = "okay";
++};

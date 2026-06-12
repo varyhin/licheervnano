@@ -1,0 +1,107 @@
+Назначение: активировать USB OTG (DesignWare DWC2) на LicheeRV Nano.
+Все 4 варианта (B/E/W/WE) выводят USB-C connector с USB 2.0 D+/D-
+к SoC pins 69/70. mainline cv180x.dtsi не описывает USB controller,
+этот патч добавляет узел usb@4340000 и активирует его в каждом
+board DTS в dual-role (otg) mode.
+
+Данные взяты из docs/sophgo_sg200x_ru/sg2002_hardware/SG2002_TRM_
+V1.0-alpha.pdf:
+  - controller base address: 0x04340000 (64K)
+  - main proc IRQ: 30 (DTS SOC_PERIPHERAL_IRQ(14))
+  - core: DesignWare DWC_otg, mainline compatible "snps,dwc2"
+  - clocks: 5 (CLK_AXI4_USB / CLK_APB_USB / CLK_USB_125M / CLK_USB_33K
+    / CLK_USB_12M), все из &clk
+  - reset: RST_USB (id 11 в cv18xx-reset.h)
+
+dr_mode = "otg" — dual role. CC1/CC2 на USB-C wired как UFP (5.1K
+pulldown), что означает default device mode при подключении к
+hosts'у; в host mode требуется USB-C OTG cable или host-mode adapter.
+
+USB PHY встроенный (UTMI), control register System control
+0x03000048. Mainline DWC2 driver управляет PHY через generic
+framework, отдельный PHY узел не описывается. phy_type = "utmi"
+указывает на встроенный transceiver.
+
+FIFO размеры взяты из реального hw_params на cv180x (читается
+через debugfs /sys/kernel/debug/usb/4340000.usb/hw_params):
+  - rx_fifo_size           = 1536  (используем 520, hw разрешает до 1536)
+  - dev_nperio_tx_fifo_size = 32   (hw_max, ставим точно 32)
+  - num_dev_ep             = 7    (поэтому 7 entries в g-tx-fifo-size)
+  - total_fifo_size        = 3072 (общий бюджет: 520+32+768 = 1320)
+Default драйвера g_np_tx_fifo_size=1024 не валидируется hw
+(1024 > 32), приводит к warning "Invalid parameter g_np_tx_fifo_size",
+с явным <32> warning исчезает.
+
+Применяется через:
+    git -C src/linux apply patches/linux/0007-licheerv-nano-usb-dwc2.patch
+
+Kernel config: CONFIG_USB_DWC2=m + CONFIG_USB_DWC2_DUAL_ROLE=y
+(требует CONFIG_USB=y && CONFIG_USB_GADGET=y, оба у нас уже =y).
+
+--- a/arch/riscv/boot/dts/sophgo/cv180x.dtsi	2026-05-27 00:20:04.252166567 +0300
++++ b/arch/riscv/boot/dts/sophgo/cv180x.dtsi	2026-05-27 00:21:29.645362341 +0300
+@@ -423,5 +423,24 @@
+ 				 <&clk CLK_SRC_RTC_SYS_0>;
+ 			clock-names = "rtc", "mcu";
+ 		};
++
++		usb: usb@4340000 {
++			compatible = "snps,dwc2";
++			reg = <0x4340000 0x10000>;
++			interrupts = <SOC_PERIPHERAL_IRQ(14) IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&clk CLK_AXI4_USB>,
++				 <&clk CLK_APB_USB>,
++				 <&clk CLK_USB_125M>,
++				 <&clk CLK_USB_33K>,
++				 <&clk CLK_USB_12M>;
++			clock-names = "otg", "register", "stb", "lpm", "phy_ref";
++			resets = <&rst RST_USB>;
++			phy_type = "utmi";
++			g-rx-fifo-size = <520>;
++			g-np-tx-fifo-size = <32>;
++			g-tx-fifo-size = <256 256 64 64 64 32 32>;
++			dr_mode = "otg";
++			status = "disabled";
++		};
+ 	};
+ };
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-b.dts
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-b.dts
+@@ -151,3 +151,7 @@
+ &uart2 {
+ 	status = "okay";
+ };
++
++&usb {
++	status = "okay";
++};
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-e.dts	2026-05-27 00:20:04.252166567 +0300
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-e.dts	2026-05-27 00:21:29.649362209 +0300
+@@ -167,3 +167,7 @@
+ &uart2 {
+ 	status = "okay";
+ };
++
++&usb {
++	status = "okay";
++};
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-w.dts
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-w.dts
+@@ -210,3 +210,7 @@
+ &uart2 {
+ 	status = "okay";
+ };
++
++&usb {
++	status = "okay";
++};
+--- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-we.dts	2026-05-27 00:20:04.252166567 +0300
++++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-we.dts	2026-05-27 00:21:29.649362209 +0300
+@@ -226,3 +226,7 @@
+ &uart2 {
+ 	status = "okay";
+ };
++
++&usb {
++	status = "okay";
++};
