@@ -39,7 +39,11 @@ rootfs is built with debootstrap from deb.debian.org.
 | licheerv-nano-build-vendor | d4003f15 | FSBL (vendor TF-A), blobs |
 | aic8800-vendor | d4003f15 | Wi-Fi 6 / BT SDIO driver |
 | cvitek-tpu-vendor | d4003f15 | TPU kernel driver |
-| cviruntime, cvikernel, cvibuilder, cnpy, zlib | see manifest | userspace TPU runtime |
+
+The userspace TPU stack (cviruntime, cvikernel, cvibuilder, cnpy, zlib,
+the tpu-mlir container, the bench kit) has been split out into a
+separate repository,
+[licheervnano-tpu-sdk-sg2002](https://gitflic.ru/project/varyhin/licheervnano-tpu-sdk-sg2002).
 
 ## Quick start
 
@@ -79,7 +83,6 @@ Individual steps: `make help`.
 | `firmware/` | vendor blobs + self-built FSBL (see NOTICE.md) |
 | `extlinux/` | boot menu for the four board variants |
 | `scripts/` | refetch, usb-gadget, SSH key hygiene, audio diagnostics |
-| `tools/` | host-side TPU pipeline: tpu-mlir container, cviruntime cross-build |
 | `docs/` | peripheral and build guides |
 | `build/`, `rootfs/`, `images/` | derived artifacts, gitignored |
 
@@ -115,7 +118,7 @@ Status on the WE variant, everything listed is verified on the board.
 | Wi-Fi 6 + BT 5 (W/WE) | working | [docs/wifi_setup.md](docs/wifi_setup.md) |
 | USB gadget (ACM console) | working | [docs/usb_setup.md](docs/usb_setup.md) |
 | Audio (mic + speaker) | working | [docs/audio_setup.md](docs/audio_setup.md) |
-| TPU (0.5 TOPS INT8, BF16) | working | [docs/tpu_setup.md](docs/tpu_setup.md) |
+| TPU (0.5 TOPS INT8, BF16) | working | [docs/tpu_sg2002.md](docs/tpu_sg2002.md) + [tpu-sdk](https://gitflic.ru/project/varyhin/licheervnano-tpu-sdk-sg2002) |
 | RTC | working | [docs/rtc_setup.md](docs/rtc_setup.md) |
 | Watchdog | working | [docs/watchdog_setup.md](docs/watchdog_setup.md) |
 | Thermal sensor | working | [docs/thermal_setup.md](docs/thermal_setup.md) |
@@ -129,12 +132,13 @@ supported in the mainline stack; these are closed or heavy vendor blocks.
 ## TPU
 
 Inference on the built-in TPU works through a forward port of the vendor
-driver (`soph_tpu.ko`, built automatically) and a cross-built userspace
-runtime. Models are compiled to the cvimodel format with the tpu-mlir
-container. The full pipeline from ONNX to running on the board is
-described in [docs/tpu_setup.md](docs/tpu_setup.md), the measurement
-methodology in
-[docs/tpu_benchmark_methodology.md](docs/tpu_benchmark_methodology.md).
+driver (`soph_tpu.ko`, built automatically). This repository hosts the
+kernel side: the driver, the `cvitek,tpu` DT node and the
+`CVITPU_GET_PADDR` ioctl contract. The userspace stack (runtime
+cross-build, model compilation with the tpu-mlir container, bench kit,
+the full pipeline from ONNX to running on the board) lives in
+[licheervnano-tpu-sdk-sg2002](https://gitflic.ru/project/varyhin/licheervnano-tpu-sdk-sg2002).
+See [docs/tpu_sg2002.md](docs/tpu_sg2002.md) for the TPU block overview.
 Anchor numbers: mobilenet_v2 BF16 about 22 ms, yolov5s INT8 with INT8
 I/O about 77 ms at 700 MHz.
 

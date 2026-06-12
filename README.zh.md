@@ -34,7 +34,10 @@ AIC8800D80 无线固件。
 | licheerv-nano-build-vendor | d4003f15 | FSBL（vendor TF-A）、blob |
 | aic8800-vendor | d4003f15 | Wi-Fi 6 / BT SDIO 驱动 |
 | cvitek-tpu-vendor | d4003f15 | TPU 内核驱动 |
-| cviruntime、cvikernel、cvibuilder、cnpy、zlib | 见 manifest | 用户态 TPU 运行时 |
+
+用户态 TPU 栈（cviruntime、cvikernel、cvibuilder、cnpy、zlib、
+tpu-mlir 容器、基准测试套件）已拆分到独立仓库
+[licheervnano-tpu-sdk-sg2002](https://gitflic.ru/project/varyhin/licheervnano-tpu-sdk-sg2002)。
 
 ## 快速开始
 
@@ -74,7 +77,6 @@ make image         # 完整构建：补丁、u-boot、opensbi、fsbl、内核、
 | `firmware/` | vendor blob 和自编译 FSBL（见 NOTICE.md） |
 | `extlinux/` | 四种板型的启动菜单 |
 | `scripts/` | refetch、usb-gadget、SSH 密钥处理、音频诊断 |
-| `tools/` | 主机侧 TPU 流水线：tpu-mlir 容器、cviruntime 交叉编译 |
 | `docs/` | 外设和构建指南 |
 | `build/`、`rootfs/`、`images/` | 派生产物，已在 .gitignore 中 |
 
@@ -109,7 +111,7 @@ make image         # 完整构建：补丁、u-boot、opensbi、fsbl、内核、
 | Wi-Fi 6 + BT 5（W/WE） | 可用 | [docs/wifi_setup.md](docs/wifi_setup.md) |
 | USB gadget（ACM 控制台） | 可用 | [docs/usb_setup.md](docs/usb_setup.md) |
 | 音频（麦克风 + 扬声器） | 可用 | [docs/audio_setup.md](docs/audio_setup.md) |
-| TPU（0.5 TOPS INT8、BF16） | 可用 | [docs/tpu_setup.md](docs/tpu_setup.md) |
+| TPU（0.5 TOPS INT8、BF16） | 可用 | [docs/tpu_sg2002.md](docs/tpu_sg2002.md) + [tpu-sdk](https://gitflic.ru/project/varyhin/licheervnano-tpu-sdk-sg2002) |
 | RTC | 可用 | [docs/rtc_setup.md](docs/rtc_setup.md) |
 | 看门狗 | 可用 | [docs/watchdog_setup.md](docs/watchdog_setup.md) |
 | 温度传感器 | 可用 | [docs/thermal_setup.md](docs/thermal_setup.md) |
@@ -123,10 +125,11 @@ make image         # 完整构建：补丁、u-boot、opensbi、fsbl、内核、
 ## TPU
 
 板载 TPU 推理通过 vendor 驱动的 forward port（`soph_tpu.ko`，自动
-编译）和交叉编译的用户态运行时实现。模型用 tpu-mlir 容器编译为
-cvimodel 格式。从 ONNX 到上板运行的完整流程见
-[docs/tpu_setup.md](docs/tpu_setup.md)，测量方法见
-[docs/tpu_benchmark_methodology.md](docs/tpu_benchmark_methodology.md)。
+编译）实现。本仓库只保留内核侧：驱动、`cvitek,tpu` DT 节点和
+`CVITPU_GET_PADDR` ioctl 契约。用户态栈（运行时交叉编译、tpu-mlir
+容器模型编译、基准测试套件、从 ONNX 到上板运行的完整流程）位于
+[licheervnano-tpu-sdk-sg2002](https://gitflic.ru/project/varyhin/licheervnano-tpu-sdk-sg2002)。
+TPU 模块概览见 [docs/tpu_sg2002.md](docs/tpu_sg2002.md)。
 参考数据：mobilenet_v2 BF16 约 22 ms，yolov5s INT8（INT8 输入输出）
 在 700 MHz 下约 77 ms。
 

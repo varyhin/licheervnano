@@ -2,8 +2,8 @@
 
 Узел под форвард-портнутый vendor-драйвер soph_tpu (compatible
 "cvitek,tpu", HAL "mars" = cv181x). Драйвер живёт out-of-tree в
-src/cvitek-tpu-vendor/ (см. docs/tpu_setup.md, патч
-patches/cvitek-tpu-vendor/0001).
+src/cvitek-tpu-vendor/ (см. патч patches/cvitek-tpu-vendor/0001;
+userspace и docs/tpu_setup.md в репо licheervnano-tpu-sdk-sg2002).
 
 Узел помещён в cv181x.dtsi (а не cv180x.dtsi), потому что это блок
 cv181x-семейства и не должен задевать cv1800b-платы. Покрывает разом

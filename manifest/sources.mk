@@ -18,8 +18,7 @@ PIN_linux := d31a849ff5011dad5c271b53819a0b279e367d68
 
 # Хранятся в src/ как снапшоты
 COMPONENTS := u-boot opensbi fiptool \
-              licheerv-nano-build-vendor aic8800-vendor cvitek-tpu-vendor \
-              cviruntime cvikernel cvibuilder cnpy zlib
+              licheerv-nano-build-vendor aic8800-vendor cvitek-tpu-vendor
 
 URL_u-boot := https://source.denx.de/u-boot/u-boot.git
 ALT_u-boot := https://github.com/u-boot/u-boot.git
@@ -47,17 +46,6 @@ URL_cvitek-tpu-vendor := https://github.com/sipeed/LicheeRV-Nano-Build.git
 PIN_cvitek-tpu-vendor := d4003f15b35d43ad4842f427050ab2bba0114fa5
 SUBPATH_cvitek-tpu-vendor := osdrv/interdrv/v2/tpu
 
-URL_cviruntime := https://github.com/sophgo/cviruntime.git
-PIN_cviruntime := ef8044988c2b4a5d491125d13e6f048b5f8a1389
-
-URL_cvikernel := https://github.com/sophgo/cvikernel.git
-PIN_cvikernel := 0b37e46607be203bf9d4d29995f6fa4bbab69435
-
-URL_cvibuilder := https://github.com/sophgo/cvibuilder.git
-PIN_cvibuilder := 4309f2a649fc7cfe7160389d52a81c469dbdd7bc
-
-URL_cnpy := https://github.com/sophgo/cnpy.git
-PIN_cnpy := 4e8810b1a8637695171ed346ce68f6984e585ef4
-
-URL_zlib := https://github.com/madler/zlib.git
-PIN_zlib := e3dc0a85b7032e98380dec011bc8f2c2ee0d8fca
+# Userspace TPU-стек (cviruntime, cvikernel, cvibuilder, cnpy, zlib)
+# вынесен в отдельный репозиторий licheervnano-tpu-sdk-sg2002:
+# https://gitflic.ru/project/varyhin/licheervnano-tpu-sdk-sg2002
