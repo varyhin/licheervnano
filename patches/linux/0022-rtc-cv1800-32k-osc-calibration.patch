@@ -1,0 +1,230 @@
+Назначение: калибровка внутреннего 32K RC-осциллятора RTC (CV1800B/SG2002,
+QFN-корпус без внешнего кварца). Без калибровки делитель секунды
+SEC_PULSE_GEN остаётся в заводском дефолте 32768.0 (0x00800000 в формате
+16.8), тогда как реальная частота RC около 21-24 кГц. RTC из-за этого идёт
+на 60-75% реальной скорости. Замер на железе E 2026-06-12 дал темп 0.64 за
+60 с и 0.71 за 10 с, регистры FC_FINE_EN=0 и ANA_CALIB=0x80030100
+(power-on default) подтвердили, что калибровка не выполнялась никогда.
+
+Источник алгоритма это vendor-драйвер osdrv/interdrv/v2/rtc/rtc.c
+(sipeed/LicheeRV-Nano-Build, пин d4003f15, функции
+rtc_32k_coarse_value_calib и rtc_32k_fine_value_calib). Mainline вплоть до
+master калибровки не содержит (rtc-cv1800.c в master бит-в-бит равен
+нашему v6.18.29), в lore релевантных серий не найдено.
+
+Алгоритм. Коарс-стадия двоичным поиском подгоняет аналоговый трим
+ANA_CALIB, пока частотомер не покажет 755-770 тактов опорных 25 МГц на
+период 32K (номинал 32768 Гц соответствует 762.9). Файн-стадия меряет
+длительность 256 периодов в тактах опоры и записывает фактическую частоту
+осциллятора в SEC_PULSE_GEN в фиксированной точке 16.8. Запуск только при
+внутреннем осцилляторе (бит 10 rtc_ctrl0 равен 0, на QFN это выставляет
+FSBL switch_rtc_mode_2nd_stage с NOTICE "Use internal 32k").
+
+Отличия порта от vendor-кода:
+- доступ через regmap родительского syscon вместо ioremap (окно
+  rtc@5025000 размером 0x2000 покрывает и регистры частотомера
+  0x40-0x50, и ядро RTC 0x1000+), правки DT не нужны
+- безусловные vendor-циклы ожидания заменены на regmap_read_poll_timeout,
+  свежесть замера определяется по изменению маркера (устойчиво к
+  переполнению счётчика), при таймауте или несхождении остаются заводские
+  дефолты с dev_warn, probe не фейлится
+- бит 31 SEC_PULSE_GEN (SEL_SEC_PULSE, признак enabled у mainline)
+  сохраняется и восстанавливается, probe не меняет enabled-состояние RTC
+  (vendor пишет регистр целиком и побочно включает RTC)
+
+Kernel-config не меняется (RTC_DRV_CV1800 уже module). Alarm-wakeup,
+не работающий на mainline-драйвере (docs/rtc_setup.md), вне скоупа.
+
+diff -urN a/drivers/rtc/rtc-cv1800.c b/drivers/rtc/rtc-cv1800.c
+--- a/drivers/rtc/rtc-cv1800.c	2026-06-12 17:16:55.548592347 +0300
++++ b/drivers/rtc/rtc-cv1800.c	2026-06-12 17:27:39.370279923 +0300
+@@ -6,8 +6,10 @@
+  */
+ 
+ #include <linux/clk.h>
++#include <linux/delay.h>
+ #include <linux/irq.h>
+ #include <linux/kernel.h>
++#include <linux/math64.h>
+ #include <linux/mfd/syscon.h>
+ #include <linux/module.h>
+ #include <linux/of.h>
+@@ -15,6 +17,13 @@
+ #include <linux/regmap.h>
+ #include <linux/rtc.h>
+ 
++#define CTRL0                  0x0008
++#define FC_COARSE_EN           0x0040
++#define FC_COARSE_CAL          0x0044
++#define FC_FINE_EN             0x0048
++#define FC_FINE_CAL            0x0050
++
++#define ANA_CALIB              0x1000
+ #define SEC_PULSE_GEN          0x1004
+ #define ALARM_TIME             0x1008
+ #define ALARM_ENABLE           0x100C
+@@ -32,6 +41,19 @@
+ #define ALARM_ENABLE_MASK      BIT(0)
+ #define SEL_SEC_PULSE          BIT(31)
+ 
++#define RTC_MODE_XTAL32K       BIT(10)
++#define FC_COARSE_MASK         GENMASK(15, 0)
++#define FC_FINE_MASK           GENMASK(23, 0)
++#define SEC_PULSE_GEN_DIV      GENMASK(30, 0)
++
++/* 25 MHz reference ticks per 32768 Hz period, nominal 762.9 */
++#define FC_COARSE_TARGET_LO    755
++#define FC_COARSE_TARGET_HI    770
++#define FC_FINE_PERIODS        256
++#define FC_REF_HZ              25000000
++#define ANA_CALIB_INIT         0x10100
++#define ANA_CALIB_INIT_STEP    128
++
+ struct cv1800_rtc_priv {
+ 	struct rtc_device *rtc_dev;
+ 	struct regmap *rtc_map;
+@@ -155,6 +177,135 @@
+ 	.alarm_irq_enable = cv1800_rtc_alarm_irq_enable,
+ };
+ 
++/*
++ * The frequency calibration counters compare the 32K oscillator with
++ * the 25 MHz reference clock. The high half of each CAL register is a
++ * measurement counter, a change there means the low half holds a fresh
++ * measurement.
++ */
++static int cv1800_rtc_fc_measure(struct cv1800_rtc_priv *info, u32 reg,
++				 u32 marker_shift, u32 mask, u32 *result)
++{
++	u32 prev, val;
++	int ret;
++
++	regmap_read(info->rtc_map, reg, &prev);
++	ret = regmap_read_poll_timeout(info->rtc_map, reg, val,
++				       (val >> marker_shift) !=
++				       (prev >> marker_shift),
++				       100, 500000);
++	if (ret)
++		return ret;
++
++	usleep_range(400, 500);
++	regmap_read(info->rtc_map, reg, &val);
++	*result = val & mask;
++
++	return 0;
++}
++
++static int cv1800_rtc_calib_coarse(struct cv1800_rtc_priv *info)
++{
++	u32 step = ANA_CALIB_INIT_STEP;
++	u32 trim, cycles;
++	int ret = 0;
++
++	regmap_write(info->rtc_map, ANA_CALIB, ANA_CALIB_INIT);
++	usleep_range(200, 300);
++	regmap_read(info->rtc_map, ANA_CALIB, &trim);
++
++	regmap_write(info->rtc_map, FC_COARSE_EN, 1);
++
++	while (1) {
++		ret = cv1800_rtc_fc_measure(info, FC_COARSE_CAL, 16,
++					    FC_COARSE_MASK, &cycles);
++		if (ret)
++			break;
++
++		if (cycles >= FC_COARSE_TARGET_LO &&
++		    cycles <= FC_COARSE_TARGET_HI)
++			break;
++
++		if (!step) {
++			ret = -ERANGE;
++			break;
++		}
++
++		if (cycles > FC_COARSE_TARGET_HI)
++			trim += step;
++		else
++			trim -= step;
++		step >>= 1;
++
++		regmap_write(info->rtc_map, ANA_CALIB, trim);
++	}
++
++	regmap_write(info->rtc_map, FC_COARSE_EN, 0);
++
++	return ret;
++}
++
++static int cv1800_rtc_calib_fine(struct device *dev,
++				 struct cv1800_rtc_priv *info)
++{
++	u32 cycles;
++	u64 freq;
++	int ret;
++
++	regmap_write(info->rtc_map, FC_FINE_EN, 1);
++	ret = cv1800_rtc_fc_measure(info, FC_FINE_CAL, 24, FC_FINE_MASK,
++				    &cycles);
++	regmap_write(info->rtc_map, FC_FINE_EN, 0);
++
++	if (ret)
++		return ret;
++	if (!cycles)
++		return -EINVAL;
++
++	/*
++	 * cycles is the length of FC_FINE_PERIODS oscillator periods in
++	 * 25 MHz reference ticks. The seconds divider takes the actual
++	 * oscillator frequency in Hz as a 16.8 fixed point value.
++	 */
++	freq = div_u64((u64)FC_FINE_PERIODS * FC_REF_HZ * 256, cycles);
++
++	regmap_update_bits(info->rtc_map, SEC_PULSE_GEN, SEC_PULSE_GEN_DIV,
++			   (u32)freq);
++
++	dev_info(dev, "32k osc calibrated to %llu.%02llu Hz\n", freq >> 8,
++		 ((freq & 0xFF) * 100) >> 8);
++
++	return 0;
++}
++
++static void cv1800_rtc_calibrate(struct device *dev,
++				 struct cv1800_rtc_priv *info)
++{
++	u32 ctrl, pulse;
++	int ret;
++
++	regmap_read(info->rtc_map, CTRL0, &ctrl);
++	if (ctrl & RTC_MODE_XTAL32K)
++		return;
++
++	/*
++	 * Trim and divider writes only take effect while the rtc_sys
++	 * side generator is selected. Restore the selection afterwards
++	 * so probing does not flip the RTC enabled state.
++	 */
++	regmap_read(info->rtc_map, SEC_PULSE_GEN, &pulse);
++	regmap_update_bits(info->rtc_map, SEC_PULSE_GEN, SEL_SEC_PULSE, 0);
++
++	ret = cv1800_rtc_calib_coarse(info);
++	if (!ret)
++		ret = cv1800_rtc_calib_fine(dev, info);
++	if (ret)
++		dev_warn(dev, "32k osc calibration failed (%d)\n", ret);
++
++	regmap_update_bits(info->rtc_map, SEC_PULSE_GEN, SEL_SEC_PULSE,
++			   pulse & SEL_SEC_PULSE);
++}
++
+ static int cv1800_rtc_probe(struct platform_device *pdev)
+ {
+ 	struct cv1800_rtc_priv *rtc;
+@@ -180,6 +331,8 @@
+ 
+ 	platform_set_drvdata(pdev, rtc);
+ 
++	cv1800_rtc_calibrate(&pdev->dev, rtc);
++
+ 	device_init_wakeup(&pdev->dev, 1);
+ 
+ 	rtc->rtc_dev = devm_rtc_allocate_device(&pdev->dev);
