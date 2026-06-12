@@ -55,8 +55,7 @@ voltage_header_mV = raw × 3300 / 4096 × (10 + 5.1) / 5.1
 raw=4095 → ≈9765 mV.
 
 Sipeed pinout: ADC1 pin на правой стороне 2x14 header (см.
-`docs/sg2002_pin_map.md` и RV_Nano_3.jpg из Sipeed wiki,
-https://wiki.sipeed.com/hardware/en/lichee/assets/RV_Nano/intro/RV_Nano_3.jpg).
+`docs/sg2002_pin_map.md` и `docs/assets/RV_Nano_3.jpg`).
 
 ## Проверка что работает
 
