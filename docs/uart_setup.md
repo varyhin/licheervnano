@@ -27,8 +27,8 @@ LicheeRV Nano под mainline Linux 6.18.29.
 
 ## Регистры pinmux
 
-Из Sipeed wiki (`docs/licheerv_nano_wiki/5_peripheral.md` section
-"UART1 UART2 UART3"):
+Из Sipeed wiki (https://wiki.sipeed.com/hardware/en/lichee/RV_Nano/5_peripheral.html,
+section "UART1 UART2 UART3"):
 
 | Шина | TX register | RX register | Значение |
 |---|---|---|---|

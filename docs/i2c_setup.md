@@ -35,7 +35,8 @@ I2C1/I2C3 описаны только в board-DTS вариантов B и E, а
 
 ## Регистры pinmux
 
-Из Sipeed wiki (`docs/licheerv_nano_wiki/5_peripheral.md` section I2C):
+Из Sipeed wiki (https://wiki.sipeed.com/hardware/en/lichee/RV_Nano/5_peripheral.html,
+section I2C):
 
 | Шина | SCL register | SDA register | Значение |
 |---|---|---|---|

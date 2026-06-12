@@ -9,11 +9,13 @@ Nano) и их распиновка на 2x14-pin header Sipeed LicheeRV Nano.
 - `SG2002_PINOUT.xlsx` (sophgo-doc, sg2002_hardware) лист
   "2. 功能信號表(QFN)" таблица функциональных сигналов с pinmux register
   адресами
-- `docs/assets/RV_Nano/intro/RV_Nano_3.jpg` распиновка 2x14 header
-  от Sipeed (с label'ами их собственной нумерации, не всегда совпадают
-  с SoC pin nomenclature)
-- `docs/licheerv_nano_wiki/5_peripheral.md` справка Sipeed по
-  периферии и pinmux регистрам
+- RV_Nano_3.jpg из Sipeed wiki
+  (https://wiki.sipeed.com/hardware/en/lichee/assets/RV_Nano/intro/RV_Nano_3.jpg)
+  распиновка 2x14 header от Sipeed (с label'ами их собственной
+  нумерации, не всегда совпадают с SoC pin nomenclature)
+- страница peripheral Sipeed wiki
+  (https://wiki.sipeed.com/hardware/en/lichee/RV_Nano/5_peripheral.html)
+  справка Sipeed по периферии и pinmux регистрам
 
 ## TL;DR доступности периферии
 
@@ -47,6 +49,8 @@ Nano) и их распиновка на 2x14-pin header Sipeed LicheeRV Nano.
 | PWR_GPIO xx | GRTC domain, gpiochip3 | active |
 
 ## Распиновка 2x14 header (по Sipeed RV_Nano_3.jpg)
+
+![Распиновка 2x14 header LicheeRV Nano (Sipeed RV_Nano_3.jpg)](https://wiki.sipeed.com/hardware/en/lichee/assets/RV_Nano/intro/RV_Nano_3.jpg)
 
 Header расположен по двум сторонам платы с шагом 2.54 мм и расстоянием
 между гребёнками 800 mil. Direction нумерации с верхнего pin вниз.
@@ -207,4 +211,5 @@ mainline gpio-сubsystem видит 4 chip'а через mainline pinctrl-sg2002
 - `docs/gpio_setup.md` это GPIO chips и USER LED/button
 - `docs/usb_setup.md` это USB OTG pinout (Type-C)
 - `docs/audio_setup.md` это audio pins (AUD_AINL_MIC, AUD_AOUTR, SPK_EN)
-- `docs/licheerv_nano_wiki/5_peripheral.md` это vendor pinout reference
+- https://wiki.sipeed.com/hardware/en/lichee/RV_Nano/5_peripheral.html
+  это vendor pinout reference

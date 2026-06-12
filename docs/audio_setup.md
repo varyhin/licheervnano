@@ -236,10 +236,10 @@ dd if=/tmp/mic.wav bs=1 skip=44 2>/dev/null | od -An -tx2 -w2 | sort -u | wc -l
 - Динамик от старого мобильного телефона / mp3-плеера
 - Piezo-зуммер для уведомлений (не музыки)
 
-Из Sipeed wiki (`docs/licheerv_nano_wiki/1_intro.md`):
+Из Sipeed wiki (https://wiki.sipeed.com/hardware/en/lichee/RV_Nano/1_intro.html):
 > Audio Output: Onboard PA amplifier, can directly connect speakers under 1W
 
-Возможна path B через PicoClaw expansion board (`docs/licheerv_nano_wiki/7_picoclaw_board.md`) которая имеет встроенный speaker connection. Без неё нужен прямой провод от header к динамику.
+Возможна path B через PicoClaw expansion board (https://wiki.sipeed.com/hardware/en/lichee/RV_Nano/7_picoclaw_board.html) которая имеет встроенный speaker connection. Без неё нужен прямой провод от header к динамику.
 
 Уточнение по pin_map.md. По схеме 70418 пины VOP/VON на header это speaker output от AW8010A (Class-D), не MIPI DSI. Прежняя ошибка в `docs/sg2002_pin_map.md` (VOP/VON как DSI video output) исправлена, таблица header и список свободных пинов согласованы с этим документом.
 
