@@ -41,9 +41,8 @@ rootfs is built with debootstrap from deb.debian.org.
 | cvitek-tpu-vendor | d4003f15 | TPU kernel driver |
 
 The userspace TPU stack (cviruntime, cvikernel, cvibuilder, cnpy, zlib,
-the tpu-mlir container, the bench kit) has been split out into a
-separate repository,
-licheervnano-tpu-sdk-sg2002.
+the tpu-mlir container, the bench kit) is not part of this repository
+and is maintained separately.
 
 ## Quick start
 
@@ -136,8 +135,8 @@ driver (`soph_tpu.ko`, built automatically). This repository hosts the
 kernel side: the driver, the `cvitek,tpu` DT node and the
 `CVITPU_GET_PADDR` ioctl contract. The userspace stack (runtime
 cross-build, model compilation with the tpu-mlir container, bench kit,
-the full pipeline from ONNX to running on the board) lives in
-licheervnano-tpu-sdk-sg2002.
+the full pipeline from ONNX to running on the board) is not part of
+this repository.
 See [docs/tpu_sg2002.md](docs/tpu_sg2002.md) for the TPU block overview.
 Anchor numbers: mobilenet_v2 BF16 about 22 ms, yolov5s INT8 with INT8
 I/O about 77 ms at 700 MHz.

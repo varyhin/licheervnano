@@ -39,8 +39,8 @@ debootstrap-ом из deb.debian.org.
 | cvitek-tpu-vendor | d4003f15 | kernel-драйвер TPU |
 
 Userspace TPU-стек (cviruntime, cvikernel, cvibuilder, cnpy, zlib,
-контейнер tpu-mlir, бенч-кит) вынесен в отдельный репозиторий
-licheervnano-tpu-sdk-sg2002.
+контейнер tpu-mlir, бенч-кит) в этот репозиторий не входит и
+ведётся отдельно.
 
 ## Быстрый старт
 
@@ -132,8 +132,7 @@ patches-apply` накладывает их на рабочее дерево, `ma
 kernel-сторона: драйвер, DT-узел `cvitek,tpu`, ioctl-контракт
 `CVITPU_GET_PADDR`. Userspace-стек (кросс-сборка рантайма, компиляция
 моделей контейнером tpu-mlir, бенч-кит, полный пайплайн от ONNX до
-запуска на плате) вынесен в репозиторий
-licheervnano-tpu-sdk-sg2002.
+запуска на плате) в этот репозиторий не входит.
 Обзор блока TPU в [docs/tpu_sg2002.md](docs/tpu_sg2002.md). Якорные
 цифры: mobilenet_v2 BF16 около 22 мс, yolov5s INT8 с INT8-вводом около
 77 мс на 700 МГц.

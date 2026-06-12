@@ -36,8 +36,7 @@ AIC8800D80 无线固件。
 | cvitek-tpu-vendor | d4003f15 | TPU 内核驱动 |
 
 用户态 TPU 栈（cviruntime、cvikernel、cvibuilder、cnpy、zlib、
-tpu-mlir 容器、基准测试套件）已拆分到独立仓库
-licheervnano-tpu-sdk-sg2002。
+tpu-mlir 容器、基准测试套件）不在本仓库内，单独维护。
 
 ## 快速开始
 
@@ -127,8 +126,8 @@ make image         # 完整构建：补丁、u-boot、opensbi、fsbl、内核、
 板载 TPU 推理通过 vendor 驱动的 forward port（`soph_tpu.ko`，自动
 编译）实现。本仓库只保留内核侧：驱动、`cvitek,tpu` DT 节点和
 `CVITPU_GET_PADDR` ioctl 契约。用户态栈（运行时交叉编译、tpu-mlir
-容器模型编译、基准测试套件、从 ONNX 到上板运行的完整流程）位于
-licheervnano-tpu-sdk-sg2002。
+容器模型编译、基准测试套件、从 ONNX 到上板运行的完整流程）不在
+本仓库内，单独维护。
 TPU 模块概览见 [docs/tpu_sg2002.md](docs/tpu_sg2002.md)。
 参考数据：mobilenet_v2 BF16 约 22 ms，yolov5s INT8（INT8 输入输出）
 在 700 MHz 下约 77 ms。

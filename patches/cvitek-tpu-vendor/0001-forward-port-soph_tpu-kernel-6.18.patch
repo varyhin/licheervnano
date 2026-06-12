@@ -49,7 +49,7 @@ make patches-apply.
    его не транслирует. Поэтому физадрес отдаёт ядро: dma_buf_get(fd) +
    attach + map_attachment_unlocked + sg_dma_address первого сегмента (тот
    же путь, что cvi_tpu_prepare_buffer на submit). Парный аллокатору
-   рантайма (репо licheervnano-tpu-sdk-sg2002, tools/cviruntime, патч 0001).
+   рантайма (userspace TPU SDK, отдельный репозиторий, tools/cviruntime, патч 0001).
 
 TEE-путь править не пришлось: в mars-HAL platform_*_tee() уже
 no-op заглушки (vendor: "cv181x project not support tpu TEE").
