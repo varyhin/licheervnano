@@ -39,8 +39,8 @@ Nano) и их распиновка на 2x14-pin header Sipeed LicheeRV Nano.
 | SDIO0 (boot SD) | да (SoC 6-12) | active как boot device |
 | SDIO1 (Wi-Fi AIC8800) | да на W/WE (SoC 51-56) | active на W/WE |
 | USB OTG | да (SoC pin 60) | active, DWC2 dual-role + ACM gadget |
-| Audio mic | на плате (LMA2718T421 MEMS, аналоговый, SoC pin AUD_AINL_MIC) | не настроен (см. `docs/audio_setup.md`) |
-| Audio speaker | на header (VOP/VON выход AW8010A amp, динамик внешний 8Ω 1Вт) | не настроен |
+| Audio mic | на плате (LMA2718T421 MEMS, аналоговый, SoC pin AUD_AINL_MIC) | работает (см. `docs/audio_setup.md`) |
+| Audio speaker | на header (VOP/VON выход AW8010A amp, динамик внешний 8Ω 1Вт) | работает (SPK_EN на время playback) |
 | GPIOA xx | XGPIOA[NN], gpiochip0 | active |
 | GPIOC xx | XGPIOC[NN] на MIPI пинах, gpiochip2 | active |
 | GPIOB xx | XGPIOB[NN] на ETH PHY пинах, gpiochip1 | active |
@@ -167,7 +167,8 @@ header переключение pinmux на одну функцию ломает
   gpiochip0. eMMC controller узел в DTS disabled, эти пины свободны
 - Левая сторона: GPIOA 15 (SPK_EN pin SoC 17) свободен как gpiochip0
   line 15
-- VOP/VON (MIPI TX) свободны если DSI display не настроен
+- VOP/VON это выходы AW8010A speaker amp (Class-D), не пины SoC, как
+  GPIO недоступны
 - Правая сторона: GPIOP 18 свободен (SoC pin не задействован QFN-38)
 - Правая сторона: GPIOA 14 уже user LED, но через sysfs можно
   переключить trigger

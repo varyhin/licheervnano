@@ -241,7 +241,7 @@ dd if=/tmp/mic.wav bs=1 skip=44 2>/dev/null | od -An -tx2 -w2 | sort -u | wc -l
 
 Возможна path B через PicoClaw expansion board (`docs/licheerv_nano_wiki/7_picoclaw_board.md`) которая имеет встроенный speaker connection. Без неё нужен прямой провод от header к динамику.
 
-**Уточнение по pin_map.md.** Сейчас в `docs/sg2002_pin_map.md` строка про «VOP / VON» на левой стороне header описывает их как «DSI video output pins это MIPI_TXM0/P0». По схеме 70418 эти пины это speaker output от AW8010A (Class-D), не MIPI DSI. Pin_map.md содержит ошибку, требует уточнения с визуальной проверкой board layout + iBOM.
+Уточнение по pin_map.md. По схеме 70418 пины VOP/VON на header это speaker output от AW8010A (Class-D), не MIPI DSI. Прежняя ошибка в `docs/sg2002_pin_map.md` (VOP/VON как DSI video output) исправлена, таблица header и список свободных пинов согласованы с этим документом.
 
 ### SG2002 встроенный codec
 
