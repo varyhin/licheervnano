@@ -43,7 +43,7 @@ rootfs is built with debootstrap from deb.debian.org.
 The userspace TPU stack (cviruntime, cvikernel, cvibuilder, cnpy, zlib,
 the tpu-mlir container, the bench kit) has been split out into a
 separate repository,
-[licheervnano-tpu-sdk-sg2002](https://gitflic.ru/project/varyhin/licheervnano-tpu-sdk-sg2002).
+licheervnano-tpu-sdk-sg2002.
 
 ## Quick start
 
@@ -118,7 +118,7 @@ Status on the WE variant, everything listed is verified on the board.
 | Wi-Fi 6 + BT 5 (W/WE) | working | [docs/wifi_setup.md](docs/wifi_setup.md) |
 | USB gadget (ACM console) | working | [docs/usb_setup.md](docs/usb_setup.md) |
 | Audio (mic + speaker) | working | [docs/audio_setup.md](docs/audio_setup.md) |
-| TPU (0.5 TOPS INT8, BF16) | working | [docs/tpu_sg2002.md](docs/tpu_sg2002.md) + [tpu-sdk](https://gitflic.ru/project/varyhin/licheervnano-tpu-sdk-sg2002) |
+| TPU (0.5 TOPS INT8, BF16) | working | [docs/tpu_sg2002.md](docs/tpu_sg2002.md) |
 | RTC | working | [docs/rtc_setup.md](docs/rtc_setup.md) |
 | Watchdog | working | [docs/watchdog_setup.md](docs/watchdog_setup.md) |
 | Thermal sensor | working | [docs/thermal_setup.md](docs/thermal_setup.md) |
@@ -137,7 +137,7 @@ kernel side: the driver, the `cvitek,tpu` DT node and the
 `CVITPU_GET_PADDR` ioctl contract. The userspace stack (runtime
 cross-build, model compilation with the tpu-mlir container, bench kit,
 the full pipeline from ONNX to running on the board) lives in
-[licheervnano-tpu-sdk-sg2002](https://gitflic.ru/project/varyhin/licheervnano-tpu-sdk-sg2002).
+licheervnano-tpu-sdk-sg2002.
 See [docs/tpu_sg2002.md](docs/tpu_sg2002.md) for the TPU block overview.
 Anchor numbers: mobilenet_v2 BF16 about 22 ms, yolov5s INT8 with INT8
 I/O about 77 ms at 700 MHz.

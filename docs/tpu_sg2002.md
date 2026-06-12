@@ -82,7 +82,7 @@ TPU на SG2002 это CVITEK/Sophgo NPU семейства cv181x (наш `firm
 
 ## Статус в нашем mainline-стеке
 
-В нашей сборке (Linux 6.18.29) TPU доведён до железа. Датапас закрыт и забенчмаркан 2026-06-02/03. `mobilenet_v2` BF16 это `Forward OK 22.77 ms`, корректность подтверждена (dog.jpg `argmax=258` Samoyed совпал с onnxruntime); `yolov5s` BF16 и INT8 совпали с CMODEL-референсом на железе. Числа Sophgo выше согласуются с нашими замерами на cv181x. Практический потолок и разбор латентности в `docs/tpu_benchmark_methodology.md` репозитория [licheervnano-tpu-sdk-sg2002](https://gitflic.ru/project/varyhin/licheervnano-tpu-sdk-sg2002) и памяти агента.
+В нашей сборке (Linux 6.18.29) TPU доведён до железа. Датапас закрыт и забенчмаркан 2026-06-02/03. `mobilenet_v2` BF16 это `Forward OK 22.77 ms`, корректность подтверждена (dog.jpg `argmax=258` Samoyed совпал с onnxruntime); `yolov5s` BF16 и INT8 совпали с CMODEL-референсом на железе. Числа Sophgo выше согласуются с нашими замерами на cv181x. Практический потолок и разбор латентности в `docs/tpu_benchmark_methodology.md` репозитория licheervnano-tpu-sdk-sg2002 и памяти агента.
 
 Два уровня для полноценной умной камеры.
 
@@ -91,7 +91,7 @@ TPU на SG2002 это CVITEK/Sophgo NPU семейства cv181x (наш `firm
 
 Подробности форвард-порта и весь userspace-стек (кросс-сборка рантайма,
 компиляция моделей, бенч-кит, `docs/tpu_setup.md`) вынесены в репозиторий
-[licheervnano-tpu-sdk-sg2002](https://gitflic.ru/project/varyhin/licheervnano-tpu-sdk-sg2002).
+licheervnano-tpu-sdk-sg2002.
 Здесь остаётся kernel-сторона: `src/cvitek-tpu-vendor`,
 `patches/cvitek-tpu-vendor`, `overlay/cvitek-tpu-vendor` (включая
 uapi-контракт `CVITPU_GET_PADDR`) и DT-узел в `patches/linux/0017`.

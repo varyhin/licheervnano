@@ -40,7 +40,7 @@ debootstrap-ом из deb.debian.org.
 
 Userspace TPU-стек (cviruntime, cvikernel, cvibuilder, cnpy, zlib,
 контейнер tpu-mlir, бенч-кит) вынесен в отдельный репозиторий
-[licheervnano-tpu-sdk-sg2002](https://gitflic.ru/project/varyhin/licheervnano-tpu-sdk-sg2002).
+licheervnano-tpu-sdk-sg2002.
 
 ## Быстрый старт
 
@@ -114,7 +114,7 @@ patches-apply` накладывает их на рабочее дерево, `ma
 | Wi-Fi 6 + BT 5 (W/WE) | работает | [docs/wifi_setup.md](docs/wifi_setup.md) |
 | USB gadget (ACM-консоль) | работает | [docs/usb_setup.md](docs/usb_setup.md) |
 | Аудио (микрофон + динамик) | работает | [docs/audio_setup.md](docs/audio_setup.md) |
-| TPU (0.5 TOPS INT8, BF16) | работает | [docs/tpu_sg2002.md](docs/tpu_sg2002.md) + [tpu-sdk](https://gitflic.ru/project/varyhin/licheervnano-tpu-sdk-sg2002) |
+| TPU (0.5 TOPS INT8, BF16) | работает | [docs/tpu_sg2002.md](docs/tpu_sg2002.md) |
 | RTC | работает | [docs/rtc_setup.md](docs/rtc_setup.md) |
 | Watchdog | работает | [docs/watchdog_setup.md](docs/watchdog_setup.md) |
 | Термосенсор | работает | [docs/thermal_setup.md](docs/thermal_setup.md) |
@@ -133,7 +133,7 @@ kernel-сторона: драйвер, DT-узел `cvitek,tpu`, ioctl-конт�
 `CVITPU_GET_PADDR`. Userspace-стек (кросс-сборка рантайма, компиляция
 моделей контейнером tpu-mlir, бенч-кит, полный пайплайн от ONNX до
 запуска на плате) вынесен в репозиторий
-[licheervnano-tpu-sdk-sg2002](https://gitflic.ru/project/varyhin/licheervnano-tpu-sdk-sg2002).
+licheervnano-tpu-sdk-sg2002.
 Обзор блока TPU в [docs/tpu_sg2002.md](docs/tpu_sg2002.md). Якорные
 цифры: mobilenet_v2 BF16 около 22 мс, yolov5s INT8 с INT8-вводом около
 77 мс на 700 МГц.

@@ -52,5 +52,4 @@ PIN_cvitek-tpu-vendor := d4003f15b35d43ad4842f427050ab2bba0114fa5
 SUBPATH_cvitek-tpu-vendor := osdrv/interdrv/v2/tpu
 
 # Userspace TPU-стек (cviruntime, cvikernel, cvibuilder, cnpy, zlib)
-# вынесен в отдельный репозиторий licheervnano-tpu-sdk-sg2002:
-# https://gitflic.ru/project/varyhin/licheervnano-tpu-sdk-sg2002
+# вынесен в отдельный репозиторий licheervnano-tpu-sdk-sg2002.
