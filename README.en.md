@@ -82,7 +82,7 @@ Individual steps: `make help`.
 | `overlay/` | new files copied over the snapshots at build time |
 | `firmware/` | vendor blobs + self-built FSBL (see NOTICE.md) |
 | `extlinux/` | boot menu for the four board variants |
-| `scripts/` | refetch, usb-gadget, SSH key hygiene, audio diagnostics |
+| `scripts/` | refetch, usb-gadget, SSH key hygiene |
 | `docs/` | peripheral and build guides |
 | `build/`, `rootfs/`, `images/` | derived artifacts, gitignored |
 

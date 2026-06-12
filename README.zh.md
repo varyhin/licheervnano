@@ -76,7 +76,7 @@ make image         # 完整构建：补丁、u-boot、opensbi、fsbl、内核、
 | `overlay/` | 构建时覆盖到快照上的新增文件 |
 | `firmware/` | vendor blob 和自编译 FSBL（见 NOTICE.md） |
 | `extlinux/` | 四种板型的启动菜单 |
-| `scripts/` | refetch、usb-gadget、SSH 密钥处理、音频诊断 |
+| `scripts/` | refetch、usb-gadget、SSH 密钥处理 |
 | `docs/` | 外设和构建指南 |
 | `build/`、`rootfs/`、`images/` | 派生产物，已在 .gitignore 中 |
 
