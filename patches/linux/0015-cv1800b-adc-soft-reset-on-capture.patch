@@ -24,7 +24,7 @@ railing/MAX) при одном и том же gain. Причина: mainline-д�
  	unsigned int mclk_rate;
  };
  
-+/* 0x03003008 bit 29 (active-low) is the internal-ADC soft reset (vendor). */
++/* 0x03003008 bit 29 (active-low) = RST_AUDADC (reset-controller@3003000, id 93). */
 +#define CV1800B_ADC_RESET_BIT          BIT(29)
 +
  static int cv1800b_adc_setbclk_div(struct cv1800b_priv *priv, unsigned int rate)
@@ -82,7 +82,7 @@ railing/MAX) при одном и том же gain. Причина: mainline-д�
  	if (IS_ERR(priv->regs))
  		return PTR_ERR(priv->regs);
  
-+	/* Audio soft-reset register (shared sysctrl), vendor uses 0x03003008. */
++	/* ADC soft-reset = reset-controller@3003000 +0x08 bit29 (RST_AUDADC id 93). */
 +	priv->rst = devm_ioremap(dev, 0x03003008, 4);
 +	if (!priv->rst)
 +		return -ENOMEM;

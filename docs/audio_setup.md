@@ -469,7 +469,7 @@ arecord -D plughw:0,0 -c 1 -r 48000 -f S16_LE -d 5 /tmp/mic.wav
 
 - Vendor SDK (эталон) это `cv181xadc.c` + карта регистров `codecs/cv181xadac.h` + функция сброса в `cv1835_i2s_subsys.c` (`cv182xa_reset_adc`). Вариант `cv182xadc.c` для 48 kHz даёт те же значения.
 - Mainline pristine (то, что в ядре) это драйвер Anton Stavinskii из `torvalds/linux` commit `75ca8602`, импортирован патчем `patches/linux/0009`.
-- Наш рабочий драйвер это `src/linux/sound/soc/sophgo/cv1800b-sound-adc.c` = 0009 + 0015 (soft-reset) + 0016 (clock-slave) + экспериментальные добавки в дереве (enable в prepare, SDM-init, ECO). Патч 0014 (CTUNE) удалён 2026-06-01 как редундантный, драйвер CTUNE не программирует.
+- Наш рабочий драйвер это `src/linux/sound/soc/sophgo/cv1800b-sound-adc.c` = 0009 + 0015 (soft-reset) + 0016 (clock-slave; в теле этого же патча лежат экспериментальные добавки: enable в prepare, ECO-запись `0x0300A020`, опрос RXADC_STATUS; макросы SDM/DITHER/VCMT определены, но не используются). Патч 0014 (CTUNE) удалён 2026-06-01 как редундантный, драйвер CTUNE не программирует.
 
 ### Соответствие имён и битовых полей
 
