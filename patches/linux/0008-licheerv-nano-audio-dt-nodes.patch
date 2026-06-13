@@ -20,9 +20,10 @@ node-name это syscon@/i2s@/audio-codec@):
 
   dma-router@154 это DMA router (sophgo,cv1800b-dmamux), маршрутизирует
     peripheral DMA requests на 8 каналов AXI DMA. Drivers cv1800b-i2s
-    запрашивают через &dmamux <devid> <config> (2-cell binding); первый
-    cell это peripheral request id (devid), реальный AXI-DMA канал из 8
-    выделяется динамически. Уже есть
+    запрашивают через &dmamux <devid> <cpuid> (2-cell binding); первый
+    cell это peripheral request id (devid), второй это CPU id (cpuid 0..2,
+    у audio-узлов =1), реальный AXI-DMA канал из 8 выделяется динамически.
+    Уже есть
     в mainline kernel (drivers/dma/cv1800b-dmamux.c). Offsets 0x154
     и 0x298 относительные к top_misc regmap (абсолютные адреса
     0x3000154 и 0x3000298).
