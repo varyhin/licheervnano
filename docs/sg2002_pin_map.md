@@ -13,6 +13,8 @@ Nano) и их распиновка на 2x14-pin header Sipeed LicheeRV Nano.
   (с label'ами их собственной нумерации, не всегда совпадают с SoC pin
   nomenclature; источник
   https://wiki.sipeed.com/hardware/en/lichee/assets/RV_Nano/intro/RV_Nano_3.jpg)
+- `docs/board_layout.md` расположение компонентов на плате (размеченные
+  фото top/bottom, `assets/RV_Nano_1.jpg` и `assets/RV_Nano_4.jpg`)
 - страница peripheral Sipeed wiki
   (https://wiki.sipeed.com/hardware/en/lichee/RV_Nano/5_peripheral.html)
   справка Sipeed по периферии и pinmux регистрам
