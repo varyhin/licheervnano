@@ -467,7 +467,7 @@ diff -urN a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-we.dts b/arch/riscv/
 + * LicheeRV Nano WE (Ethernet + Wi-Fi 6 + BT 5 одновременно)
 + *
 + * Based on sg2002-licheerv-nano-b.dts by Thomas Bonnefille.
-+ * Объединение вариантов E и W: gmac0 (internal PHY через RMII) +
++ * Объединение вариантов E и W: gmac0 (internal MAC + internal PHY) +
 + * sdhci1 (SDIO) с AIC8800 combo Wi-Fi/BT.
 + *
 + * Этот DTS используется как default-вариант extlinux меню. Он толерантен

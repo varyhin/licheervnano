@@ -1,6 +1,6 @@
 Назначение: добавить kernel builtin driver `cv1800b-ephy-init` для запуска
 внутреннего 10/100M Ethernet PHY на Sophgo CV1800B/SG2002. Driver выполняет
-vendor-specific reset+init sequence (~250 register pokes) и переключает
+vendor-specific reset+init sequence (~110 register pokes) и переключает
 MDIO control обратно на ETH_MAC. После этого generic c22 PHY driver
 обнаруживает PHY и phylink validation проходит.
 
