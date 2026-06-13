@@ -409,11 +409,11 @@ aplay -D hw:1,0 /tmp/test.wav
 - Объём backport (~4000 строк)
 
 **Phase 2 (DT-узлы) v2** завершена. После обнаружения mainline upstream работы переделана под mainline bindings. Patch `patches/linux/0008-licheerv-nano-audio-dt-nodes.patch` добавляет в cv180x.dtsi:
-- `dmamux@3000154` это DMA router (sophgo,cv1800b-dmamux)
-- `i2s1@4110000` + `i2s2@4120000` это TDM/I2S controllers (sophgo,cv1800b-i2s)
-- `sound_adc@300a100` это ADC codec (sophgo,cv1800b-sound-adc) для микрофона
-- `sound_dac@300a000` это DAC codec (sophgo,cv1800b-sound-dac) для динамика
-- I2S0/I2S3 и PDM controller НЕ добавлены (не нужны mainline)
+- `dma-router@154` (label dmamux, sophgo,cv1800b-dmamux) внутри `syscon@3000000` это DMA router
+- `i2s0@4100000`, `i2s1@4110000`, `i2s2@4120000`, `i2s3@4130000` это все 4 TDM/I2S controllers (sophgo,cv1800b-i2s)
+- `audio-codec@300a100` (label sound_adc, sophgo,cv1800b-sound-adc) это ADC codec для микрофона
+- `audio-codec@300a000` (label sound_dac, sophgo,cv1800b-sound-dac) это DAC codec для динамика
+- PDM controller не добавлен (не нужен mainline)
 
 Все узлы со `status = "disabled"`, dtbs компилируются без warnings.
 

@@ -40,9 +40,9 @@ ALSA card `licheerv-nano` с capture и playback substreams. Реально
 работает только capture (по причинам выше).
 
 Ожидаемые ALSA устройства после boot:
-    /proc/asound/cards   licheerv-nano [licheerv-nano]
-    /dev/snd/pcmC0D0p    playback substream
-    /dev/snd/pcmC0D0c    capture substream
+    /proc/asound/cards   0 [licheervnano] : simple-card - licheerv-nano
+    /dev/snd/pcmC0D1p    playback substream (dai-link@1, i2s3/sound_dac)
+    /dev/snd/pcmC0D0c    capture substream (dai-link@0, i2s0/sound_adc)
     arecord -Dhw:0,0 -d 3 -r 48000 -f S16_LE -c 2 /tmp/test.wav
 
 --- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-b.dts

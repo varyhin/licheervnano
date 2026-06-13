@@ -27,9 +27,9 @@ Kernel configs которые нужно включить в Makefile проек
   CONFIG_SND_SOC_CV1800B_DAC_CODEC=m
   CONFIG_SND_SOC_SIMPLE_CARD=m (для соединения codec'ов с I2S)
 
-Активация audio в board DTS делается отдельным patch'ем 0010 (TBD),
-требует sound-card узла с simple-audio-card linking i2s1/i2s2 ↔
-sound_adc / sound_dac.
+Активация audio в board DTS сделана патчем 0010: sound-card
+(simple-audio-card) связывает i2s0 ↔ sound_adc (capture) и
+i2s3 ↔ sound_dac (playback).
 
 DT-bindings (sophgo,cv1800b-i2s.yaml, sophgo,cv1800b-codecs.yaml)
 из mainline commit 75ca8602 не импортируются, они нужны только
@@ -41,8 +41,8 @@ runtime probe без yaml validations.
 
 Зависимости от mainline:
 - drivers/dma/cv1800b-dmamux.c — уже в нашем v6.18.29
-- DMA controller узел dmamux@3000154 — добавлен patch 0008
-- I2S DT-узлы i2s1@4110000, i2s2@4120000 — добавлены patch 0008
+- DMA router узел dma-router@154 (label dmamux) в syscon@3000000 — добавлен patch 0008
+- I2S DT-узлы i2s0@4100000..i2s3@4130000 (все 4) — добавлены patch 0008
 - ADC/DAC codec DT-узлы — добавлены patch 0008 со status=disabled
 
 Источник: https://github.com/torvalds/linux/commit/75ca8602
