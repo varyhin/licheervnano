@@ -6,8 +6,8 @@ cv1800b_dac_enable), поэтому внешний усилитель AW8010A п
 во время воспроизведения, а не постоянно. Без свойства spk-en-gpios
 поведение прежнее: gpiod_set_value по NULL-дескриптору это no-op.
 
-Заменяет always-on gpio-hog. Патч 0012 теперь задаёт spk-en-gpios у
-&sound_dac вместо hog, и этот gpio становится stream-gated.
+Патч 0012 задаёт spk-en-gpios у &sound_dac (прежнего always-on hog не
+было, 0012 первым драйвит пин), а этот патч делает gpio stream-gated.
 
 Проверка на железе: в покое `gpioget` линии SPK_EN (GPIOA[15]) даёт 0,
 во время `aplay` поднимается в 1.

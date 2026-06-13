@@ -8,20 +8,23 @@ VOP/VON -> внешний speaker) активирован patch'ем 0010. SPK_E
 XGPIOA[15], SoC pin 17, gpiochip0 line 15. Без HIGH на этом пине
 AW8010A выключен.
 
-Раньше пин держался всегда HIGH через gpio-hog. Теперь gpio отдан
-драйверу DAC: он поднимает SPK_EN в .trigger START и опускает в STOP,
-поэтому усилитель не питается в покое (меньше потребления и наводок).
+Gpio отдан драйверу DAC: он поднимает SPK_EN в .trigger START и
+опускает в STOP, поэтому усилитель не питается в покое (меньше
+потребления и наводок). Прежнего always-on hog не было, этот патч
+первым драйвит пин.
 
-pinctrl strict=true, но пады GPIOA по умолчанию в GPIO-режиме
-(подтверждено рабочим user-LED на GPIOA[14]), отдельная pinmux-запись
-для SPK_EN не требуется.
+Отдельная pinmux-запись для SPK_EN не добавлена: доступность пина как
+GPIO без явного pinmux проверена эмпирически на железе (см. ниже). Если
+boot оставит fmux в не-GPIO состоянии, стоит добавить
+PINMUX(PIN_SPK_EN, ...) как это делает 0018 для SD0_PWR_EN.
 
 Проверка на железе: в покое `gpioget` линии 15 даёт 0, во время
 `aplay -D spk файл.wav` поднимается в 1. Звук слышно только с внешним
 8 Ом динамиком на header VOP/VON.
 
-Применяется поверх patches/linux/0001 (создал e/w/we dts), 0010
-(активировал sound_dac) и 0013 (драйвер читает spk-en) через:
+Применяется поверх patches/linux/0001 (создал e/w/we dts) и 0010
+(активировал sound_dac); драйвер из 0013 гейтит gpio в рантайме
+(forward-reference, не зависимость применения), через:
     git -C src/linux apply patches/linux/0012-licheerv-nano-spk-en.patch
 --- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-b.dts
 +++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-b.dts

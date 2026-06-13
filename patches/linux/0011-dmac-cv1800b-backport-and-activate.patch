@@ -14,13 +14,17 @@ apb_regs, и нужно новый compatible "sophgo,cv1800b-axi-dma" с фла
 AXI_DMA_FLAG_ARG0_AS_CHAN. Тогда driver возьмёт channel-id напрямую
 из dma_spec->args[0] (что dmamux вкладывает первым cell).
 
-Mainline commit b49c7027 от 2026-02-26 это уже после нашего v6.18.29
-stable freeze (Jan 2026), поэтому импортируется как backport.
+Mainline commit b49c70273801 ('dmaengine: dw-axi-dmac: Add support for
+CV1800B DMA', автор Inochi Amaoto, мердж Vinod Koul 2026-02-26) это уже
+после нашего v6.18.29 stable freeze (Jan 2026), поэтому импортируется
+как backport. SHA и дата сверены с torvalds/linux.
 
 Источник:
-  https://github.com/torvalds/linux/commit/b49c7027
+  https://github.com/torvalds/linux/commit/b49c70273801bf2f7c16ac49f403a5c253b46159
 
-Этот патч это драйверная часть backport (of_match + флаг ARG0_AS_CHAN).
+Этот патч это драйверная часть backport (of_match-запись + флаг
+AXI_DMA_FLAG_ARG0_AS_CHAN + путь of_xlate по args[0] + понижение
+apb_regs dev_err -> dev_dbg).
 Compatible самого dmac-узла выставлен в патче 0008.
 
 DT-binding ещё имеет commit be3e2a04 для документации, не импортируется
