@@ -301,7 +301,8 @@ aic8800-install: aic8800
 	   $(ROOTFS)/lib/modules/6.18.29/extra/aic8800/
 	$(CROSS)strip --strip-debug $(ROOTFS)/lib/modules/6.18.29/extra/aic8800/*.ko
 	depmod -a -b $(ROOTFS) 6.18.29
-	@# Прошивка чипа AIC8801 U03 (комплект u03 + fmacfw/fmacfwbt + userconfig).
+	@# Прошивка чипа AIC8801 U03 (модуль Sipeed AIC8800D80; комплект u03
+	@# + fmacfw/fmacfwbt + userconfig).
 	@# Путь зашит дефолтом CONFIG_AIC_FW_PATH в aic8800_bsp/Makefile.
 	@# Без этих файлов fdrv падает на request_firmware и wlan0 не создаётся.
 	mkdir -p $(ROOTFS)/usr/lib/firmware/aic8800_sdio/aic8800_and_aic8800D80
