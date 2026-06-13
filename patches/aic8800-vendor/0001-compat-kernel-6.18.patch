@@ -22,7 +22,8 @@
 
 ПОКА НЕ ИСПРАВЛЕНО (остаётся блокером для fdrv сборки):
 - cfg80211 ops signature changes (rwnx_main.c struct cfg80211_ops):
-  change_beacon → change_ap (struct cfg80211_ap_update), set_monitor_channel
+  change_beacon: тип параметра cfg80211_beacon_data* → cfg80211_ap_update*
+  (6.7+, имя члена не меняется), set_monitor_channel
   получил netdev параметр, get_tx_power/set_tx_power/get_channel получили
   link_id (int), start_radar_detection и tdls_mgmt тоже расширены.
 - cfg80211_ch_switch_notify, cfg80211_ch_switch_started_notify,

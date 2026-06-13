@@ -54,7 +54,7 @@ Threshold KERNEL_VERSION(6, 9, 0) выбран как граница «ново�
 - vermagic=6.18.29 SMP mod_unload riscv
 - depends=cfg80211,aic8800_bsp
 - alias=sdio:c*vC8A1d2082*, sdio:c*vC8A1d0082*, sdio:c*vC8A1dC08D*
-  (AIC8800D80 будет matched по dC08D)
+  (AIC8800DC по dC08D, AIC8800D80 по d0082, AIC8800D80X2 по d2082)
 
 Ещё открыто на ходу (TODO следующий раунд):
 - Установка aic8800_bsp.ko, aic8800_fdrv.ko и firmware blobs в rootfs.
