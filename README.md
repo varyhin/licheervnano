@@ -120,7 +120,7 @@ patches-apply` накладывает их на рабочее дерево, `ma
 | Термосенсор | работает | [docs/thermal_setup.md](docs/thermal_setup.md) |
 | LED, триггеры | работает | [docs/led_setup.md](docs/led_setup.md) |
 | I2C, ADC | работает | [docs/i2c_setup.md](docs/i2c_setup.md), [docs/adc_setup.md](docs/adc_setup.md) |
-| SARADC-карта пинов | справочник | [docs/sg2002_pin_map.md](docs/sg2002_pin_map.md) |
+| Карта пинов SG2002 | справочник | [docs/sg2002_pin_map.md](docs/sg2002_pin_map.md) |
 
 Дисплей (MIPI DSI), камера (ISP) и видеокодек (VPU) в mainline-стеке
 пока не поддержаны, это закрытые или тяжёлые vendor-блоки.

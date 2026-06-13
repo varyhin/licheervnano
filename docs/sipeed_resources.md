@@ -75,9 +75,9 @@ R30 5.1K → GND` (индикатор). Vendor подтверждает:
 (active-low, LED горел в покое), патч удалён (коммит bc0f2cdbe).
 Актуальный разбор в `docs/led_setup.md` и `docs/gpio_setup.md`.
 
-### USER button отсутствует в hardware
+### USER button (gpio-keys на porta 30)
 
-Mainline DTS Thomas Bonnefille:
+Наш патч 0001 добавляет gpio-keys поверх mainline DTS Thomas Bonnefille (в самом mainline этого узла нет):
 
 ```
 user-button {
@@ -88,22 +88,18 @@ user-button {
 };
 ```
 
-В schematic блоке "PWR & User LED | BOOT & RESET KEY" есть только
-2 кнопки:
+На железе кнопка USER работает (вариант E, проверено evtest 2026-06-13):
+нажатие даёт событие `KEY_DISPLAYTOGGLE` (code 431) на `/dev/input/event0`,
+value 1 на нажатие и value 0 на отпускание. Узел gpio-keys рабочий, GPIO 30
+подключён к физической кнопке, не фантом.
 
-- SW1 = BOOT_KEY (для выбора boot mode, не управляется Linux)
-- SW2 = RESET button (физический reset через SYS_RSTN)
+- USER = gpio-keys на `&porta 30`, `KEY_DISPLAYTOGGLE`, читается Linux
+- RESET = аппаратный сброс через SYS_RSTN, в Linux как клавиша не приходит
 
-Нет hardware USER button! Mainline DTS определяет gpio-keys на
-&porta 30, но физически на pcb 70405/70415/70418 такого нет.
-Kernel регистрирует input event device, но никакие press events
-не могут происходить. На plate gpioinfo показывает `consumer=user
-input active-low debounce-period=10ms` что технически
-правильно, просто GPIO 30 это не connected к кнопке физически.
-
-Решение: либо оставить как есть (input device без backing hardware
-не мешает), либо удалить узел из DTS для чистоты. Эта тема не блокер,
-текущая bring-up работает корректно.
+Прежняя запись в этом файле утверждала, что USER-кнопки на pcb нет (вывод
+из схематического блока "PWR & User LED | BOOT & RESET KEY" без проверки на
+железе). Замер evtest это опроверг. Вики Sipeed перечисляет только RST+BOOT
+и не упоминает USER, поэтому раскладку кнопок стоит сверять по железу.
 
 ### LED2 (красный) это индикатор питания 3.3V, всегда горит при наличии питания
 
@@ -186,9 +182,9 @@ phy_id reads as zero, stmmac probe fails. Что мы сейчас и видим
 - D+/D- к SoC USB_DP (pin 69)/USB_DM (pin 70)
 - VBUS 5V power input
 
-Для USB OTG bring-up в mainline понадобится добавить узел `usb@`
-с DesignWare USB controller compatible и USB phy. Узла в `cv180x.dtsi`
-пока нет.
+USB OTG уже поднят патчем `patches/linux/0007-licheerv-nano-usb-dwc2.patch`:
+узел `usb@4340000` (`sophgo,cv1800b-usb`, `dr_mode="otg"`) добавлен в
+`cv180x.dtsi` и включён во всех 4 board-DTS.
 
 ### Audio output PA AW8010A + MIC LMA2718T421
 
@@ -199,8 +195,8 @@ power amplifier. Принимает AUD_OUT с SoC pin 4 (PAD_AUD_AOUTR),
 U12 это analog MEMS микрофон LMA2718T421 (output pin AUD_IN
 подключается к SoC pin 2 PAD_AUD_AINL_MIC).
 
-Для audio bring-up в mainline нужен I2S/ASoC driver под SG2002,
-mainline пока не поддерживает.
+Audio уже поднят патчами 0008-0010 (DT-узлы I2S/TDM + internal ADC/DAC
+codec, бэкпорт из mainline; активация в board-DTS).
 
 ### ADC1 имеет input voltage divider
 
@@ -242,8 +238,9 @@ monitoring и аналогичных.
 - [ ] Обновить `docs/sg2002_pin_map.md` упоминая ADC divider
 - [ ] Когда добавим LCD bring-up, описать AW9962E backlight в
   отдельном узле DTS
-- [ ] USB OTG узел в `cv180x.dtsi`, audio I2S+codec, MIPI DSI/CSI это
-  отдельные крупные tasks
+- [x] USB OTG узел в `cv180x.dtsi` сделан патчем 0007
+- [x] audio I2S+codec сделан патчами 0008-0010
+- [ ] MIPI DSI/CSI это отдельная крупная task
 
 ## Где лежат скачанные PDF
 
