@@ -21,13 +21,18 @@ cv1800b-tdm.c:
 - многословная диагностика переведена в dev_dbg.
 
 cv1800b-sound-adc.c:
-- per-open lifecycle: bit29 soft-reset в hw_params (по выключенному ADC),
+- per-open lifecycle: bit29 soft-reset в hw_params (по выключенному ADC,
+  импульс clear→set back-to-back как vendor cv182xa_reset_adc, без задержек),
   enable в prepare, новый .shutdown гасит ADC; режим always-on убран.
 - settle 1000 мс в prepare: floating правый вход оседает по DC ~700 мс (замер
   на железе, tau ~70 мс) + запас; без него старт моно-downmix несёт транзиент.
-- экспериментальные добавки в теле этого патча: ECO-запись (ioremap 0x0300A020,
-  сброс bit0 GAIN_RATIO_1) в hw_params и опрос RXADC_STATUS на init-done
-  (байт 0x77) в prepare; на железе как победитель не закрепились.
+  У vendor settle нет, оставлен как обоснованная замером добавка.
+- ECO-запись в hw_params (ioremap 0x0300A020, сброс bit0 GAIN_RATIO_1): сверено
+  с vendor cv182xadc.c, для 48k это ровно ADDI_TXDAC_GAIN_RATIO_1 (clear bit0,
+  mask=bit0), vendor-faithful.
+- опрос RXADC_STATUS на init-done (байт 0x77) УБРАН: в vendor codec такого нет
+  (STATUS только save/restore в suspend/resume), магия 0x77 без источника.
+- reset-задержки (usleep hold/settle) УБРАНЫ: vendor делает импульс мгновенно.
 - capture channels_min=2; диагностика в dev_dbg.
 - CTUNE (ANA3 bits[11:8]) НЕ пишется: vendor-запись редундантна (на железе
   CTUNE=0 не дал разницы), это патч 0014 удалён. Сбросовый дефолт 0xC подтверждён
@@ -152,7 +157,7 @@ cv1800b-sound-adc.c:
  	return 0;
  }
  
-@@ -179,14 +191,18 @@
+@@ -179,14 +191,16 @@
  		 readl(priv->regs + CV1800B_RXADC_ANA3));
  
  	/*
@@ -169,15 +174,13 @@ cv1800b-sound-adc.c:
 -	writel(r & ~CV1800B_ADC_RESET_BIT, priv->rst);
 -	writel(r | CV1800B_ADC_RESET_BIT, priv->rst);
 +	writel(r & ~CV1800B_ADC_RESET_BIT, priv->rst);	/* assert (active-low) */
-+	usleep_range(200, 400);				/* hold modulator in reset */
 +	writel(r | CV1800B_ADC_RESET_BIT, priv->rst);	/* deassert */
-+	usleep_range(2000, 3000);			/* let the reset settle */
 +	dev_dbg(priv->dev, "adc soft-reset done, rst=0x%08x\n",
 +		readl(priv->rst));
  
  	/* Re-commit analog regs after reset (vendor rewrites ANA0/ANA2). */
  	writel(readl(priv->regs + CV1800B_RXADC_ANA2),
-@@ -207,38 +223,100 @@
+@@ -207,38 +221,79 @@
  	val = u32_replace_bits(val, DECIMATION_64, REG_RXADC_CIC_OPT);
  	writel(val, priv->regs + CV1800B_RXADCC_CTRL1);
  
@@ -231,6 +234,7 @@ cv1800b-sound-adc.c:
 -		break;
 -	default:
 -		return -EINVAL;
+-	}
 +	/*
 +	 * Power the ADC and start its I2S-TX here, in prepare, while the audio
 +	 * clock is already running (the cpu DAI enables it in hw_params) and
@@ -241,27 +245,6 @@ cv1800b-sound-adc.c:
 +	cv1800b_adc_enable(priv, true);
 +	dev_dbg(priv->dev, "adc enabled, ctrl0=0x%08x\n",
 +		readl(priv->regs + CV1800B_RXADC_CTRL0));
-+
-+	/*
-+	 * Poll RXADC_STATUS for the CIC filter init-done (low byte 0x77) after
-+	 * enable, so we proceed only once the digital front-end is up.
-+	 */
-+	{
-+		u32 st = 0;
-+		int i;
-+
-+		for (i = 0; i < 50; i++) {
-+			st = readl(priv->regs + CV1800B_RXADC_STATUS);
-+			if ((st & 0xff) == 0x77)
-+				break;
-+			usleep_range(1000, 2000);
-+		}
-+		if ((st & 0xff) != 0x77)
-+			dev_warn(priv->dev,
-+				 "adc init-done not reached, status=0x%08x\n", st);
-+		else
-+			dev_dbg(priv->dev, "adc init-done after ~%dms\n", i);
- 	}
  
 +	/*
 +	 * Settle the analog side before the I2S RX latches at trigger. The
@@ -272,7 +255,7 @@ cv1800b-sound-adc.c:
 +	 * of a recording carries a loud transient from the right channel. 1000 ms
 +	 * is ~700 ms measured plus margin for unit/temperature spread in tau;
 +	 * capture is opened manually (no boot autostart), so the latency is fine.
-+	 * INIT-DONE above gates the digital front-end; this wait is analog-only.
++	 * This wait is analog-only; vendor has no settle, kept as a measured margin.
 +	 * No SDM-init (vendor-faithful: no RSTSDM/VCMT/DITHER); the per-open soft
 +	 * reset in hw_params gives the modulator a clean start.
 +	 */
@@ -298,7 +281,7 @@ cv1800b-sound-adc.c:
  static int cv1800b_adc_dai_set_sysclk(struct snd_soc_dai *dai, int clk_id,
  				      unsigned int freq, int dir)
  {
-@@ -251,14 +329,15 @@
+@@ -251,14 +306,15 @@
  
  static const struct snd_soc_dai_ops cv1800b_adc_dai_ops = {
  	.hw_params = cv1800b_adc_hw_params,
