@@ -38,7 +38,6 @@
 	user_led_cfg: user-led-cfg {
 		user-led-pins {
 			pinmux = <PINMUX(PIN_SD0_PWR_EN, 3)>;  /* 3 = GPIO */
-			bias-disable;
 			power-source = <3300>;
 		};
 	};
