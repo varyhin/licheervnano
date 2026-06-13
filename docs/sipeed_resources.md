@@ -41,13 +41,15 @@ PDF доступны без verify_code, datasheet'ы onboard-компонент
 | 70405 | W (без E) | AIC8800D | нет | AW9962E driver | 4 lane MIPI |
 | 70415 | W (различная разводка камеры?) | AIC8800D | нет | AW9962E driver | 4 lane MIPI |
 | 70418 | WE | AIC8800D | 10/100M PHY | AW9962E driver | 4 lane MIPI |
+| (нет schematic) | E (Ethernet) | нет (возможно DNP AIC8800D на 70418) | 10/100M PHY | AW9962E driver | 4 lane MIPI |
 | (нет schematic) | B (basic) | возможно DNP placement AIC8800D на 70405? | нет | возможно DNP |  |
 
 Из 3 опубликованных schematic'ов B (basic, без Wi-Fi/BT/Ethernet) не
 найден отдельно. Возможно Sipeed продаёт B-вариант как 70405 ревизию
 PCB с не запаянным AIC8800D (DNP), либо B имеет внутренний неопубликованный
-SCH. Программно у нас 4 DTS варианта (B/E/W/WE), что покрывает hardware
-конфигурации с/без Ethernet и с/без Wi-Fi.
+SCH. E (Ethernet без Wi-Fi) тоже не имеет отдельного schematic, вероятно
+это 70418 (WE) с не запаянным AIC8800D. Программно у нас 4 DTS варианта
+(B/E/W/WE), что покрывает hardware конфигурации с/без Ethernet и с/без Wi-Fi.
 
 ## Ключевые находки из schematic (актуально для текущего bring-up)
 
