@@ -18,6 +18,11 @@ Backport источников:
   Reset release (shutdown через base, dig_rst_n/ana_rst_n через wrap)
   взят из закомментированных строк vendor cvitek.c с пометкой "do this
   in board.c" и из vendor `dwmac-cvitek.c::bm_eth_reset_phy()`.
+- MII-page18 LPF/HPF: CV181x "mars" коэффициенты (0x48=0x0808, 0x4c=0x0808,
+  0x50=0x32f8, 0x54=0xf8dc), ветка `#if CONFIG_ARCH_CV181X` в cvitek.c.
+  SG2002 собирается как CV181X/mars (vendor
+  `build/boards/sg200x/sg2002_licheervnano_sd/linux/..._defconfig`:
+  CONFIG_ARCH_CV181X_ASIC=y, CONFIG_ARCH_CVITEK_CHIP="mars"), не CV180X/phobos.
 - DT-узел `ephy-init@3009000` в `cv180x.dtsi` для привязки driver.
 - Kconfig + Makefile для сборки.
 
@@ -61,7 +66,7 @@ diff -urN a/arch/riscv/boot/dts/sophgo/cv180x.dtsi b/arch/riscv/boot/dts/sophgo/
 diff -urN a/drivers/net/phy/cv1800b-ephy-init.c b/drivers/net/phy/cv1800b-ephy-init.c
 --- a/drivers/net/phy/cv1800b-ephy-init.c	1970-01-01 03:00:00.000000000 +0300
 +++ b/drivers/net/phy/cv1800b-ephy-init.c	2026-05-25 16:16:54.515475410 +0300
-@@ -0,0 +1,245 @@
+@@ -0,0 +1,244 @@
 +// SPDX-License-Identifier: GPL-2.0-or-later
 +/*
 + * Sophgo CV1800B / SG2002 internal Ethernet PHY init driver.
@@ -250,14 +255,13 @@ diff -urN a/drivers/net/phy/cv1800b-ephy-init.c b/drivers/net/phy/cv1800b-ephy-i
 +	writel(0x0012, base + 0x58);
 +	writel(0x6848, base + 0x5c);
 +
-+	/* MII-page18: LPF/HPF (CV180x "phobos" вариант) */
++	/* MII-page18: LPF/HPF, CV181x "mars" coefficients. SG2002 builds as
++	 * CV181X/mars (vendor defconfig CONFIG_ARCH_CV181X_ASIC=y), not phobos. */
 +	writel(0x1200, base + 0x7c);
-+	writel(0x0801, base + 0x48);
-+	writel(0x1717, base + 0x4c);
-+	writel(0x0108, base + 0x5c);
-+	writel(0x3afc, base + 0x50);
-+	writel(0x08d3, base + 0x54);
-+	writel(0x00fb, base + 0x60);
++	writel(0x0808, base + 0x48);
++	writel(0x0808, base + 0x4c);
++	writel(0x32f8, base + 0x50);
++	writel(0xf8dc, base + 0x54);
 +
 +	/* Switch to MII-page0, EPHY start auto-neg */
 +	writel(0x0000, base + 0x7c);

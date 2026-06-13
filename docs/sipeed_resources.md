@@ -173,6 +173,19 @@ init sequence для PHY чтобы он отвечал на MDIO bus. Без н
 phy_id reads as zero, stmmac probe fails. Что мы сейчас и видим в
 свежей сборке если CV1800B_EPHY_INIT не =y.
 
+Init-последовательность сверена с vendor BSP (`drivers/net/phy/cvitek.c`
+функция `cv182xa_phy_config_init` + `dwmac-cvitek.c::bm_eth_reset_phy`):
+reset базы (`& ~0x3` + mdelay 2), wrap-последовательность
+(0x0900/0x0904/0x0906/0x090e), APB rw_sel и EFUSE-дефолты
+(0x5a5a/0x0000/0x0bb0) vendor-точны. Блок MII-page18 (LPF/HPF) это
+единственное место, гейтящееся по arch: исправлен с phobos (CV180X) на
+mars (CV181X), потому что SG2002 собирается как CV181X/mars (vendor
+`sg2002_licheervnano_sd_defconfig`: CONFIG_ARCH_CV181X_ASIC=y,
+CONFIG_ARCH_CVITEK_CHIP="mars"). На железе
+LicheeRV Nano E подтверждено с mars-сборкой 2026-06-13: end0 на
+100baseT/Full, DHCP, ping 0% loss, 0 ошибок интерфейса. Margin-стресс на
+длинном/зашумлённом кабеле не гонялся.
+
 ### USB Type-C connector
 
 70418 page 4, блок "USB TypeC":
