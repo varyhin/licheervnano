@@ -66,7 +66,7 @@ Flashing: balenaEtcher accepts `.img.gz` directly, or use
 `dd if=images/licheervnano.img of=/dev/sdX bs=4M conv=fsync`.
 
 Console: UART0, 115200 8N1. The board variant is selected in the U-Boot
-extlinux menu at boot (default WE, a few seconds timeout). Login root,
+extlinux menu at boot (default E, a few seconds timeout). Login root,
 password sipeed (override with the `ROOT_PASSWORD` variable).
 
 Individual steps: `make help`.

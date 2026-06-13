@@ -63,7 +63,7 @@ make image         # полная сборка: патчи, u-boot, opensbi, fsb
 `dd if=images/licheervnano.img of=/dev/sdX bs=4M conv=fsync`.
 
 Консоль: UART0, 115200 8N1. Вариант платы выбирается в extlinux-меню
-U-Boot при загрузке (по умолчанию WE, таймаут несколько секунд).
+U-Boot при загрузке (по умолчанию E, таймаут несколько секунд).
 Логин root, пароль sipeed (меняется переменной `ROOT_PASSWORD`).
 
 Отдельные шаги: `make help`.

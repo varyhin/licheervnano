@@ -54,10 +54,13 @@ dr_mode = "otg";
 
 Сейчас `otg`. Драйвер DWC2 в host-режиме создаст root-hub `usb1`, в peripheral создаст `/sys/class/udc/4340000.usb`. На LicheeRV Nano ID-pin отсутствует, distinction по VBUS sense.
 
-Альтернативы без пересборки DTB:
+Сменить dr_mode без пересборки DTB штатно нельзя:
 
-- Override через cmdline в `extlinux/extlinux.conf`: добавить `dwc2.dr_mode=host` или `dwc2.dr_mode=peripheral`.
-- Sysfs role-switch (если ядро экспортирует): `echo host > /sys/bus/platform/devices/4340000.usb/role`.
+- У dwc2 нет module-параметра, `dwc2.dr_mode=` в cmdline не существует.
+- Sysfs `role` появляется только если в DT описан `usb-role-switch` с
+  connector-узлом; у нашего узла его нет, поэтому атрибута `role` нет.
+- Чтобы поменять роль, правят `dr_mode` в board-DTS и пересобирают DTB
+  (или применяют DT-overlay).
 
 ## Kernel config
 
@@ -684,7 +687,7 @@ CONFIG_USB_FUNCTION_MASS_STORAGE=y  # UMS, плата это USB-флешка
 ## Известные ограничения
 
 - На SG2002 нет полноценного USB-C PD контроллера, переключение роли только через VBUS sense.
-- Mainline DWC2 не всегда корректно срабатывает на VBUS-detection без отдельного `usb-role-switch` биндинга. Если OTG-режим не переключается, проще пиннить через cmdline.
+- Mainline DWC2 не всегда корректно срабатывает на VBUS-detection без отдельного `usb-role-switch` биндинга. Если OTG-режим не переключается, проще зафиксировать `dr_mode` в board-DTS и пересобрать DTB.
 - При работе в peripheral-режиме плата может ловить просадку питания, если ПК ограничивает ток порта.
 
 ## Связанные документы

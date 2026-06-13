@@ -60,7 +60,7 @@ make image         # 完整构建：补丁、u-boot、opensbi、fsbl、内核、
 `dd if=images/licheervnano.img of=/dev/sdX bs=4M conv=fsync`。
 
 控制台为 UART0，115200 8N1。板型在启动时通过 U-Boot 的 extlinux 菜单
-选择（默认 WE，超时数秒）。登录用户 root，密码 sipeed（可用
+选择（默认 E，超时数秒）。登录用户 root，密码 sipeed（可用
 `ROOT_PASSWORD` 变量修改）。
 
 单独执行各步骤请参考 `make help`。
