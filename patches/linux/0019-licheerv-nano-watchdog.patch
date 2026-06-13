@@ -45,5 +45,5 @@ reset-по-таймауту IRQ не требует.
 +		};
 +
  		usb: usb@4340000 {
- 			compatible = "snps,dwc2";
+ 			compatible = "sophgo,cv1800b-usb";
  			reg = <0x4340000 0x10000>;

@@ -8,19 +8,27 @@ board DTS в dual-role (otg) mode.
 V1.0-alpha.pdf:
   - controller base address: 0x04340000 (64K)
   - main proc IRQ: 30 (DTS SOC_PERIPHERAL_IRQ(14))
-  - core: DesignWare DWC_otg, mainline compatible "snps,dwc2"
-  - clocks: 5 (CLK_AXI4_USB / CLK_APB_USB / CLK_USB_125M / CLK_USB_33K
-    / CLK_USB_12M), все из &clk
+  - core: DesignWare DWC_otg
   - reset: RST_USB (id 11 в cv18xx-reset.h)
 
-dr_mode = "otg" — dual role. CC1/CC2 на USB-C wired как UFP (5.1K
-pulldown), что означает default device mode при подключении к
-hosts'у; в host mode требуется USB-C OTG cable или host-mode adapter.
+compatible = "sophgo,cv1800b-usb" это SoC-specific match в mainline
+(drivers/usb/dwc2/params.c), driver накладывает dwc2_set_cv1800_params:
+UTMI 16-bit PHY, speed high, без HNP/SRP, без host/gadget DMA,
+power_down none, AHB burst INCR16. Generic "snps,dwc2" тоже биндится,
+но этих SoC-quirks не ставит.
 
-USB PHY встроенный (UTMI), control register System control
-0x03000048. Mainline DWC2 driver управляет PHY через generic
-framework, отдельный PHY узел не описывается. phy_type = "utmi"
-указывает на встроенный transceiver.
+clocks. Драйвер dwc2 (drivers/usb/dwc2/platform.c) запрашивает и
+включает только два клока по имени, "otg" и "utmi". Включается один,
+"otg" = CLK_AXI4_USB (AXI bus clock контроллера). Прочие гейты USB
+(APB/125M/33K/12M) драйвер не трогает, держатся вне этого узла,
+поэтому в DT их не перечисляем. binding dwc2.yaml допускает clocks
+minItems 1.
+
+USB PHY встроенный (UTMI), control register System control 0x03000048.
+Mainline DWC2 управляет PHY через generic framework, отдельный PHY
+узел не описывается. Тип PHY драйвер берёт из GHWCFG и форсирует в
+UTMI quirk-функцией, DT-свойства phy_type в биндинге нет, поэтому оно
+не задаётся.
 
 FIFO размеры взяты из реального hw_params на cv180x (читается
 через debugfs /sys/kernel/debug/usb/4340000.usb/hw_params):
@@ -32,31 +40,30 @@ Default драйвера g_np_tx_fifo_size=1024 не валидируется hw
 (1024 > 32), приводит к warning "Invalid parameter g_np_tx_fifo_size",
 с явным <32> warning исчезает.
 
+dr_mode = "otg" это dual role. CC1/CC2 на USB-C wired как UFP (5.1K
+pulldown), что означает default device mode при подключении к
+host'у; в host mode требуется USB-C OTG cable или host-mode adapter.
+
 Применяется через:
     git -C src/linux apply patches/linux/0007-licheerv-nano-usb-dwc2.patch
 
 Kernel config: CONFIG_USB_DWC2=m + CONFIG_USB_DWC2_DUAL_ROLE=y
 (требует CONFIG_USB=y && CONFIG_USB_GADGET=y, оба у нас уже =y).
 
---- a/arch/riscv/boot/dts/sophgo/cv180x.dtsi	2026-05-27 00:20:04.252166567 +0300
-+++ b/arch/riscv/boot/dts/sophgo/cv180x.dtsi	2026-05-27 00:21:29.645362341 +0300
-@@ -423,5 +423,24 @@
+--- a/arch/riscv/boot/dts/sophgo/cv180x.dtsi
++++ b/arch/riscv/boot/dts/sophgo/cv180x.dtsi
+@@ -423,5 +423,19 @@
  				 <&clk CLK_SRC_RTC_SYS_0>;
  			clock-names = "rtc", "mcu";
  		};
 +
 +		usb: usb@4340000 {
-+			compatible = "snps,dwc2";
++			compatible = "sophgo,cv1800b-usb";
 +			reg = <0x4340000 0x10000>;
 +			interrupts = <SOC_PERIPHERAL_IRQ(14) IRQ_TYPE_LEVEL_HIGH>;
-+			clocks = <&clk CLK_AXI4_USB>,
-+				 <&clk CLK_APB_USB>,
-+				 <&clk CLK_USB_125M>,
-+				 <&clk CLK_USB_33K>,
-+				 <&clk CLK_USB_12M>;
-+			clock-names = "otg", "register", "stb", "lpm", "phy_ref";
++			clocks = <&clk CLK_AXI4_USB>;
++			clock-names = "otg";
 +			resets = <&rst RST_USB>;
-+			phy_type = "utmi";
 +			g-rx-fifo-size = <520>;
 +			g-np-tx-fifo-size = <32>;
 +			g-tx-fifo-size = <256 256 64 64 64 32 32>;
