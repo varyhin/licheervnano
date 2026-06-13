@@ -88,10 +88,10 @@ SPI на header не выведен.
 | GPIOA 29 / UART2 RX / IIC1 SDA | 29 | IIC0_SDA | XGPIOA[29], UART1_RX, UART2_RX | UART2 RX (pinmux 0x2) |
 | GPIOA 28 / UART2 TX / IIC1 SCL / ADC | 28 | IIC0_SCL | XGPIOA[28], UART1_TX, UART2_TX | UART2 TX (pinmux 0x2) |
 | ADC1 | 59 | ADC1 | XGPIOB[3], KEY_COL2 | ADC channel 1 (SAR-ADC) |
-| GPIOP 19 / UART3 TX / IIC1 SCL / PWM 4 / SPI2 CS / SDIO1 D3 | 51 | SD1_D3 | PWR_GPIO[18], SPI2_CS_X, IIC1_SCL, UART3_RX, PWM[10] | I2C1 SCL (pinmux 0x2) или SDIO1 D3 на W/WE |
+| GPIOP 19 / UART3 TX / IIC1 SCL / PWM 4 / SPI2 CS / SDIO1 D3 | 51 | SD1_D3 | PWR_GPIO[18], SPI2_CS_X, IIC1_SCL, UART3_CTS, PWM[4] | I2C1 SCL (pinmux 0x2) или SDIO1 D3 на W/WE |
 | GPIOP 22 / IIC1 SDA / UART3 RTS / PWM 8 / SPI2 MISO / SDIO1 D1 | 54 | SD1_D0 | PWR_GPIO[21], SPI2_SDI, IIC1_SDA, UART3_RTS, PWM[7] | I2C1 SDA (pinmux 0x2) или SDIO1 D0 на W/WE. Sipeed маркировка SDIO1 D1 на этом пине ошибочна, реально SoC SD1_D0 |
-| GPIOP 21 / UART3 CTS / IIC3 SCL / PWM 5 / SPI2 MOSI / SDIO1 CMD | 55 | SD1_CMD | PWR_GPIO[22], SPI2_SDO, IIC3_SCL, UART3_CTS, PWM[8] | I2C3 SCL (pinmux 0x2) или SDIO1 CMD на W/WE |
-| GPIOP 20 / UART3 RX / PWM 7 / SPI2 SCK / SDIO1 CLK | 56 | SD1_CLK | PWR_GPIO[23], SPI2_SCK, IIC3_SDA, UART3_TX, PWM[9] | I2C3 SDA (pinmux 0x2) или SDIO1 CLK на W/WE |
+| GPIOP 21 / UART3 CTS / IIC3 SCL / PWM 5 / SPI2 MOSI / SDIO1 CMD | 55 | SD1_CMD | PWR_GPIO[22], SPI2_SDO, IIC3_SCL, EPHY_LNK_LED, PWM[8] | I2C3 SCL (pinmux 0x2) или SDIO1 CMD на W/WE |
+| GPIOP 20 / UART3 RX / PWM 7 / SPI2 SCK / SDIO1 CLK | 56 | SD1_CLK | PWR_GPIO[23], SPI2_SCK, IIC3_SDA, EPHY_SPD_LED, PWM[9] | I2C3 SDA (pinmux 0x2) или SDIO1 CLK на W/WE |
 | GPIOP 18 | 50 | (вакантный SoC pin на QFN-38) | пин не задействован SoC в QFN-38, заглушка | свободен |
 | GPIOA 14 | 15 | SD0_PWR_EN | XGPIOA[14], SDIO0_PWR_EN | user LED (D1 на плате, default off, триггер через sysfs) |
 | 3V3 | - | - | - | 3.3V supply |
@@ -112,22 +112,22 @@ header. Полная таблица для всех SoC pins в xlsx файле,
 | 7 | SD0_CMD | 0x0300_1020 | SDIO0_CMD | IIC1_SCL | SPI0_SDO | XGPIOA[8] | - | PWM[14] | EPHY_SPD_LED | DBG[1] |
 | 8 | SD0_D0 | 0x0300_1024 | SDIO0_D0 | CAM_MCLK1 | SPI0_SDI | XGPIOA[9] | UART3_TX | PWM[13] | WG0_D0 | DBG[2] |
 | 12 | SD0_D3 | 0x0300_1030 | SDIO0_D3 | CAM_MCLK0 | SPI0_CS_X | XGPIOA[12] | UART3_RX | PWM[10] | WG1_D1 | DBG[5] |
-| 18 | UART0_TX | 0x0300_1040 | UART0_TX | CAM_MCLK1 | PWM[4] | XGPIOA[16] | UART1_TX | AUX1 | - | DBG[6] |
-| 19 | UART0_RX | 0x0300_1044 | UART0_RX | CAM_MCLK0 | PWM[5] | XGPIOA[17] | UART1_RX | AUX0 | - | DBG[7] |
-| 26 | JTAG_CPU_TMS | 0x0300_1064 | JTAG_TMS | CAM_MCLK0 | PWM[7] | XGPIOA[19] | UART1_RTS | AUX0 | UART1_TX | DBG[9] |
-| 27 | JTAG_CPU_TCK | 0x0300_1068 | JTAG_TCK | CAM_MCLK1 | PWM[6] | XGPIOA[18] | UART1_CTS | AUX1 | UART1_RX | DBG[8] |
-| 28 | IIC0_SCL | 0x0300_1070 | IIC0_SCL | UART1_TX | UART2_TX | XGPIOA[28] | - | WG0_D0 | - | DBG[10] |
-| 29 | IIC0_SDA | 0x0300_1074 | IIC0_SDA | UART1_RX | UART2_RX | XGPIOA[29] | - | WG0_D1 | WG1_D0 | DBG[11] |
-| 47 | PWR_GPIO0 | 0x0300_10A4 | PWR_GPIO[0] | UART2_TX | PWR_UART0_TX | - | PWM[8] | - | - | - |
-| 48 | PWR_GPIO1 | 0x0300_10A8 | PWR_GPIO[1] | UART2_RX | - | EPHY_LNK_LED | PWM[9] | PWR_IIC_SCL | IIC2_SCL | PWR_MCU_JTAG_TMS |
-| 49 | PWR_GPIO2 | 0x0300_10AC | PWR_GPIO[2] | - | PWR_SECTICK | EPHY_SPD_LED | PWM[10] | PWR_IIC_SDA | IIC2_SDA | PWR_MCU_JTAG_TCK |
+| 18 | UART0_TX | 0x0300_1040 | UART0_TX | CAM_MCLK1 | PWM[4] | XGPIOA[16] | UART1_TX | AUX1 | JTAG_TMS | DBG[6] |
+| 19 | UART0_RX | 0x0300_1044 | UART0_RX | CAM_MCLK0 | PWM[5] | XGPIOA[17] | UART1_RX | AUX0 | JTAG_TCK | DBG[7] |
+| 26 | JTAG_CPU_TMS | 0x0300_1064 | JTAG_TMS | CAM_MCLK0 | PWM[7] | XGPIOA[19] | UART1_RTS | AUX0 | UART1_TX | - |
+| 27 | JTAG_CPU_TCK | 0x0300_1068 | JTAG_TCK | CAM_MCLK1 | PWM[6] | XGPIOA[18] | UART1_CTS | AUX1 | UART1_RX | - |
+| 28 | IIC0_SCL | 0x0300_1070 | JTAG_TDI | UART1_TX | UART2_TX | XGPIOA[28] | IIC0_SCL | WG0_D0 | - | DBG[10] |
+| 29 | IIC0_SDA | 0x0300_1074 | JTAG_TDO | UART1_RX | UART2_RX | XGPIOA[29] | IIC0_SDA | WG0_D1 | WG1_D0 | DBG[11] |
+| 47 | PWR_GPIO0 | 0x0300_10A4 | PWR_GPIO[0] | UART2_TX | PWR_UART0_RX | - | PWM[8] | - | - | - |
+| 48 | PWR_GPIO1 | 0x0300_10A8 | PWR_GPIO[1] | UART2_RX | - | EPHY_LNK_LED | PWM[9] | PWR_IIC_SCL | IIC2_SCL | IIC0_SDA |
+| 49 | PWR_GPIO2 | 0x0300_10AC | PWR_GPIO[2] | - | PWR_SECTICK | EPHY_SPD_LED | PWM[10] | PWR_IIC_SDA | IIC2_SDA | IIC0_SCL |
 | 51 | SD1_D3 | 0x0300_10D0 | PWR_SD1_D3 | SPI2_CS_X | IIC1_SCL | PWR_GPIO[18] | CAM_MCLK0 | UART3_CTS | PWR_SPINOR1_CS_X | PWM[4] |
 | 52 | SD1_D2 | 0x0300_10D4 | PWR_SD1_D2 | IIC1_SCL | UART2_TX | PWR_GPIO[19] | CAM_MCLK0 | UART3_TX | PWR_SPINOR1_HOLD | PWM[5] |
 | 53 | SD1_D1 | 0x0300_10D8 | PWR_SD1_D1 | IIC1_SDA | UART2_RX | PWR_GPIO[20] | CAM_MCLK1 | UART3_RX | PWR_SPINOR1_WP | PWM[6] |
 | 54 | SD1_D0 | 0x0300_10DC | PWR_SD1_D0 | SPI2_SDI | IIC1_SDA | PWR_GPIO[21] | CAM_MCLK1 | UART3_RTS | PWR_SPINOR1_MISO | PWM[7] |
-| 55 | SD1_CMD | 0x0300_10E0 | PWR_SD1_CMD | SPI2_SDO | IIC3_SCL | PWR_GPIO[22] | - | EPHY_LNK_LED | PWR_SPINOR1_MOSI | PWM[8] |
-| 56 | SD1_CLK | 0x0300_10E4 | PWR_SD1_CLK | SPI2_SCK | IIC3_SDA | PWR_GPIO[23] | - | EPHY_SPD_LED | PWR_SPINOR1_SCK | PWM[9] |
-| 59 | ADC1 | 0x0300_10F8 | ADC1 (SAR) | - | - | XGPIOB[3] | KEY_COL2 | - | - | - |
+| 55 | SD1_CMD | 0x0300_10E0 | PWR_SD1_CMD | SPI2_SDO | IIC3_SCL | PWR_GPIO[22] | CAM_VS0 | EPHY_LNK_LED | PWR_SPINOR1_MOSI | PWM[8] |
+| 56 | SD1_CLK | 0x0300_10E4 | PWR_SD1_CLK | SPI2_SCK | IIC3_SDA | PWR_GPIO[23] | CAM_HS0 | EPHY_SPD_LED | PWR_SPINOR1_SCK | PWM[9] |
+| 59 | ADC1 | 0x0300_10F8 | ADC1 (SAR) | - | - | XGPIOB[3] | KEY_COL2 | - | PWM[3] | - |
 
 Используемые в текущей сборке pinmux установки (задаются pinctrl-группами
 board-DTS, патч `patches/linux/0021`; I2C1/I2C3 только на B/E, на W/WE их
@@ -167,8 +167,9 @@ header переключение pinmux на одну функцию ломает
 После активации UART0+UART1+UART2+I2C1+I2C3, на 2x14 header остаются
 неконфликтные пины:
 
-- Левая сторона: GPIOA 22/23/24/25/26 (EMMC*) как pure GPIO через
-  gpiochip0. eMMC controller узел в DTS disabled, эти пины свободны
+- Левая сторона: GPIOA 22/23/24/25 (EMMC*) как pure GPIO через
+  gpiochip0. eMMC controller узел в DTS disabled, эти пины свободны (GPIOA 26
+  тоже EMMC, но свободен только на B/E; на W/WE это Wi-Fi pwrseq reset)
 - Левая сторона: GPIOA 15 (SPK_EN pin SoC 17) НЕ свободен, занят драйвером
   sound_dac как spk-en-gpios (gpiochip0 line 15, -EBUSY), патчи 0012/0013
 - VOP/VON это выходы AW8010A speaker amp (Class-D), не пины SoC, как
