@@ -1,6 +1,7 @@
 Назначение: backport mainline commit b49c7027 (от 2026-02-26) который
 добавляет CV1800B-specific compatible "sophgo,cv1800b-axi-dma" в
-dw-axi-dmac driver, + менять compatible нашего dmac узла под него.
+dw-axi-dmac driver. Сам узел dmac получает этот compatible в патче 0008
+(audio DT-узлы), этот патч трогает только драйверную часть.
 
 Phase 5 audio bring-up fix. После активации audio (Phase 4) на железе
 дrecord падал с:
@@ -19,8 +20,8 @@ stable freeze (Jan 2026), поэтому импортируется как backp
 Источник:
   https://github.com/torvalds/linux/commit/b49c7027
 
-Это первая часть backport. Вторая часть (изменение compatible нашего
-dmac узла) идёт ниже в этом же patch.
+Этот патч это драйверная часть backport (of_match + флаг ARG0_AS_CHAN).
+Compatible самого dmac-узла выставлен в патче 0008.
 
 DT-binding ещё имеет commit be3e2a04 для документации, не импортируется
 (нужен только для dtbs_check, рантайм его не использует).
