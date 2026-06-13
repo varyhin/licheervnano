@@ -24,7 +24,7 @@ watchdog@3010000 {
 };
 ```
 
-reg `0x3010000/0x1000`, reset `RST_WDT`=48 (=vendor `0x30`), IRQ `SOC_PERIPHERAL_IRQ(42)`=58 (=vendor `0x3a`, калибровка `SOC_PERIPHERAL_IRQ(n)=n+16`), clock `CLK_APB_WDT`=58 (tclk, единственный WDT-клок в mainline). Модуль `dw_wdt` грузится по modalias `of:...snps,dw-wdt` без ручного modprobe.
+reg `0x3010000/0x1000`, reset `RST_WDT`=48 (=vendor `0x30`), IRQ `SOC_PERIPHERAL_IRQ(42)`=58 (=vendor `cv181x_base_riscv.dtsi` `cv-wd@0x3010000 interrupts=<58 LEVEL_HIGH>`; макрос `(nr)+16` определён в mainline `sg2002.dtsi`), clock `CLK_APB_WDT`=58 (tclk, единственный WDT-клок в mainline). Модуль `dw_wdt` грузится по modalias `of:...snps,dw-wdt` без ручного modprobe.
 
 ## Проверка на железе
 

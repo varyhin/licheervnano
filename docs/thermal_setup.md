@@ -25,7 +25,7 @@ soc_temp: thermal-sensor@30e0000 {
 };
 ```
 
-reg `0x30e0000/0x100`, clock `CLK_TEMPSEN`=17 (`sophgo,cv1800.h`, гейт `clk_tempsen` уже реализован в `clk-cv1800.c`, родитель osc). IRQ: vendor DT из SDK Sipeed и upstream-патч оба дают сырой PLIC hwirq 16; по калибровке репо `SOC_PERIPHERAL_IRQ(n)=n+16` (vendor uart0 raw `0x2c`=44 == наш `SOC_PERIPHERAL_IRQ(28)`), значит raw 16 = `SOC_PERIPHERAL_IRQ(0)`. В финальном dtb узел = `interrupts=<0x10 0x04>` (точно как vendor). Модуль `cv1800_thermal` грузится по modalias `of:...sophgo,cv1800-thermal` без ручного modprobe.
+reg `0x30e0000/0x100`, clock `CLK_TEMPSEN`=17 (`sophgo,cv1800.h`, гейт `clk_tempsen` уже реализован в `clk-cv1800.c`, родитель osc). IRQ: vendor `cv181x_base_riscv.dtsi` даёт `thermal@030E0000 interrupts=<16 LEVEL_HIGH>`, а макрос `SOC_PERIPHERAL_IRQ(nr)=(nr)+16` определён в mainline `sg2002.dtsi`, поэтому raw 16 = `SOC_PERIPHERAL_IRQ(0)` (vendor пишет raw, mainline через макрос). В финальном dtb узел = `interrupts=<0x10 0x04>` (точно как vendor). Модуль `cv1800_thermal` грузится по modalias `of:...sophgo,cv1800-thermal` без ручного modprobe.
 
 Reset не используется: vendor-узел упоминал `reset-names "tempsen"`, но upstream-драйвер обходится без него.
 
