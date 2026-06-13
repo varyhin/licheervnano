@@ -22,7 +22,7 @@ DT-сторона целиком на mainline-ссылках, без out-of-tre
 
 Собранный DTB сверён: resets <0x03 0x07 0x03 0x08 0x03 0x09> и
 interrupts <0x4b 0x04 0x4c 0x04> байт-в-байт совпали с vendor-узлом
-(docs/sophgo_vendor_ko/vendor_dt.dts).
+(vendor DTS из Sipeed SDK sipeed/LicheeRV-Nano-Build).
 
 НЕ проверено на железе (нужен boot + insmod soph_tpu + /dev/cvi-tpu0).
 

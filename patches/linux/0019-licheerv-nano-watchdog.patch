@@ -11,7 +11,7 @@ cv181x.dtsi -> cv180x.dtsi). Вставлен после pristine-узла rtc@5
 контекст хунка стабильный.
 
 DT целиком на mainline-ссылках, побайтно сверяется с vendor-узлом
-cv-wd@0x3010000 (docs/sophgo_vendor_ko/vendor_dt.dts):
+cv-wd@0x3010000 (vendor DTS из Sipeed SDK sipeed/LicheeRV-Nano-Build):
   - reg 0x3010000 размер 0x1000 (vendor reg = <.. 0x3010000 .. 0x1000>)
   - reset RST_WDT = 48 (cv18xx-reset.h) = vendor resets = <.. 0x30>
   - IRQ pretimeout: vendor interrupts = <0x3a 0x04> = raw 58. По калибровке

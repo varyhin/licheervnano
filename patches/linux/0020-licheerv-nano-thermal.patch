@@ -26,7 +26,7 @@ B/E/W/WE через sg2002.dtsi -> cv181x.dtsi -> cv180x.dtsi):
     reg 0x30e0000 размер 0x100, clocks <&clk CLK_TEMPSEN>,
     #thermal-sensor-cells = <0>. Вставлен перед pristine-узлом saradc@30f0000
     (адресный сосед), контекст хунка стабильный.
-  - IRQ: vendor DT (docs/sophgo_vendor_ko/vendor_dt.dts) и upstream-патч оба
+  - IRQ: vendor DT (Sipeed SDK sipeed/LicheeRV-Nano-Build) и upstream-патч оба
     дают сырой PLIC hwirq 16, тип level-high. По калибровке репо
     SOC_PERIPHERAL_IRQ(n) = n + 16 (выверено: vendor uart0 raw 0x2c=44 ==
     наш SOC_PERIPHERAL_IRQ(28); vendor watchdog raw 0x3a=58 ==
@@ -37,7 +37,7 @@ B/E/W/WE через sg2002.dtsi -> cv181x.dtsi -> cv180x.dtsi):
     (видны в /sys), а функционально срабатывает только critical (аварийный
     orderly_poweroff). 110C выбран с запасом под TPU/разгон и ниже Tj max
     кремния ~125C, чтобы не ложно-срабатывать. Дописан в хвост cv180x.dtsi
-    между закрытием soc и закрытием корня, анкер на pristine sound_dac.
+    между закрытием soc и закрытием корня, после последнего soc-узла rtc@5025000.
 
 НЕ проверено на железе на момент генерации (нужен boot + чтение
 /sys/class/thermal/thermal_zone0/temp + рост температуры под TPU-нагрузкой).
@@ -51,7 +51,7 @@ diff -urN a/arch/riscv/boot/dts/sophgo/cv180x.dtsi b/arch/riscv/boot/dts/sophgo/
  
 +		soc_temp: thermal-sensor@30e0000 {
 +			compatible = "sophgo,cv1800-thermal";
-+			reg = <0x30e0000 0x100>;
++			reg = <0x030e0000 0x100>;
 +			clocks = <&clk CLK_TEMPSEN>;
 +			interrupts = <SOC_PERIPHERAL_IRQ(0) IRQ_TYPE_LEVEL_HIGH>;
 +			#thermal-sensor-cells = <0>;
