@@ -15,6 +15,11 @@ Backport как-есть из mainline, не из vendor SDK. Mainline-верс�
   sound/soc/sophgo/Kconfig             47 строк
   sound/soc/sophgo/Makefile            5 строк
 
+Примечание (upstream as-is): у codec-драйверов имя platform/component
+(.name = cv1800b-adc-codec / cv1800b-dac-codec) не совпадает с именем
+модуля (cv1800b-sound-adc / cv1800b-sound-dac). На probe не влияет,
+привязка идёт по compatible sophgo,cv1800b-sound-adc/-dac.
+
 Изменения в top-level wireup:
   sound/soc/Kconfig    +source "sound/soc/sophgo/Kconfig"
   sound/soc/Makefile   +obj-$(CONFIG_SND_SOC) += sophgo/

@@ -24,11 +24,12 @@ due to SoC design constraints, the output path becomes functional only
 after additional vendor-specific register programming".
 
 Известные ограничения этого patch:
-1. AW8010A enable GPIO (GPIOA[15]=SPK_EN) НЕ настроен в DT. Без
-   ручного `gpioset` или ALSA mixer'а speaker amp останется выключенным.
-   Сейчас приоритет это capture путь (LMA2718T421 mic), playback можно
-   докрутить позже через regulator-fixed или ALSA control.
-2. mainline cv1800b drivers поддерживают только fixed 48 kHz, S16_LE.
+1. AW8010A enable GPIO (GPIOA[15]=SPK_EN) с тех пор настроен в DT
+   патчами 0012/0013 (spk-en-gpios у &sound_dac, stream-gated), playback
+   на динамик работает. Прежняя заметка «SPK_EN нет, playback позже»
+   устарела.
+2. В нашей сборке codec-путь работает на 48 kHz, S16_LE; сам I2S/TDM
+   контроллер (cv1800b-tdm) этим форматом не ограничен.
 3. Внутри SoC routing analog mic → ADC и DAC → analog speaker out
    жёсткий в hardware, не требует pinctrl настройки.
 

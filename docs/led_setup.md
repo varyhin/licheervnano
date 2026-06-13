@@ -16,7 +16,7 @@
 ## Две вещи, без которых синий не работает
 
 1. Полярность. В DTS узел `gpio-leds`/`user-led` должен быть
-   `<&porta 14 GPIO_ACTIVE_HIGH>` (как в upstream/vendor). Прежний патч
+   `<&porta 14 GPIO_ACTIVE_HIGH>` (как в vendor; в mainline DTS этого узла нет). Прежний патч
    `0006` ставил `ACTIVE_LOW` это инвертировало LED (в покое горел), удалён.
 2. Пинмукс пада. `GPIOA14` это пад `SD0_PWR_EN`. Reset/boot оставляет его в
    функции `SD0_PWR_EN` (fmux `0x03001038` = `0x0`), которая держит пад HIGH,

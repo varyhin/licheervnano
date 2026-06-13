@@ -22,7 +22,7 @@ Nano) и их распиновка на 2x14-pin header Sipeed LicheeRV Nano.
 | Подсистема | На header физически | Текущий статус |
 |---|---|---|
 | UART0 console | да (A16/A17 = SoC 18/19) | active, kernel console |
-| UART1 | да (GPIOA 18/19 = SoC 26/27) | active, /dev/ttyS1 |
+| UART1 | да (GPIOA 18/19 = SoC 27/26, перекрёст) | active, /dev/ttyS1 |
 | UART2 | да (GPIOA 28/29 = SoC 28/29) | active, /dev/ttyS2 |
 | UART3 | нет (мультиплексирован с I2C1+SDIO Wi-Fi) | пропущен |
 | UART4 | нет (Sipeed не выводит) | пропущен |

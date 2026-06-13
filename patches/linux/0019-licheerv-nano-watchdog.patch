@@ -7,8 +7,9 @@ DesignWare APB watchdog SoC CV1800B/SG2002 по адресу 0x3010000. Mainline
 
 Узел помещён в cv180x.dtsi (SoC-уровень, как rtc/usb/audio), покрывает
 разом все 4 board-варианта B/E/W/WE (они инклудят sg2002.dtsi ->
-cv181x.dtsi -> cv180x.dtsi). Вставлен после pristine-узла rtc@5025000,
-контекст хунка стабильный.
+cv181x.dtsi -> cv180x.dtsi). Вставлен между rtc@5025000 и usb@4340000;
+хвостовой контекст хунка это usb-узел из 0007, поэтому 0019 применяется
+после 0007.
 
 DT целиком на mainline-ссылках, побайтно сверяется с vendor-узлом
 cv-wd@0x3010000 (vendor DTS из Sipeed SDK sipeed/LicheeRV-Nano-Build):

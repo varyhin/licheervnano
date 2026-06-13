@@ -437,11 +437,11 @@ Kernel configs в Makefile проекта:
 - `&i2s0 { okay };` (RX, capture к internal ADC)
 - `&i2s3 { okay };` (TX, playback к internal DAC)
 - `&sound_adc { okay };` (mic codec) + `&sound_dac { okay };` (speaker codec)
-- Узел `sound` это simple-audio-card с двумя DAI-link: i2s0↔sound_adc (capture) и i2s3↔sound_dac (playback), `mclk-fs = <256>`, `system-clock-frequency = <12288000>`
+- Узел `sound` это simple-audio-card с двумя DAI-link: i2s0↔sound_adc (capture) и i2s3↔sound_dac (playback). `mclk-fs = <256>` это свойство карты, а `system-clock-frequency = <12288000>` задаётся в cpu sub-node каждого dai-link, не на верхнем уровне
 
 Routing критичен: на SG2002 I2S0 разведён жёстко на внутренний ADC, I2S3 на внутренний DAC. I2S1/I2S2 это для внешних кодеков. Попытка использовать i2s1 для микрофона даёт запись чистых нулей.
 
-**Phase 5 (capture) работает на железе (2026-05-28).** ALSA card `licheervnano` создаётся, микрофон LMA2718T421 пишет реальный сигнал (подтверждено: тысячи уникальных сэмплов вместо нулей).
+**Phase 5 (capture) работает на железе (2026-05-28).** ALSA card `licheervnano` (id; longname `licheerv-nano` с дефисом) создаётся, микрофон LMA2718T421 пишет реальный сигнал (подтверждено: тысячи уникальных сэмплов вместо нулей).
 
 **Микрофон это моно на левом канале.** Схема подтверждает один вход AUD_AINL_MIC, правого микрофона нет. Рабочая запись (проверено на железе 2026-05-30, звучит отлично):
 ```

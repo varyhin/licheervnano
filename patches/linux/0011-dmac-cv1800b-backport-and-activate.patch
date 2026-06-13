@@ -1,4 +1,4 @@
-Назначение: backport mainline commit b49c7027 (от 2026-02-26) который
+Назначение: backport mainline commit b49c70273801 (мердж 2026-02-26) который
 добавляет CV1800B-specific compatible "sophgo,cv1800b-axi-dma" в
 dw-axi-dmac driver. Сам узел dmac получает этот compatible в патче 0008
 (audio DT-узлы), этот патч трогает только драйверную часть.

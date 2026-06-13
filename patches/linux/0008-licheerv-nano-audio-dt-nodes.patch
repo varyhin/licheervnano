@@ -40,7 +40,8 @@ node-name это syscon@/i2s@/audio-codec@):
 
   i2s1@4110000 + i2s2@4120000 это I2S/TDM controllers 1/2. General-
     purpose для ВНЕШНИХ кодеков, к встроенному codec не подключены.
-    Добавлены для полноты, в board DTS не активируются.
+    Добавлены для полноты, в board DTS не активируются (mclk-rate у i2s2
+    не задан, т.к. узлы не используются).
 
   sound_adc@300a100 это internal ADC codec (sophgo,cv1800b-sound-adc).
     Принимает analog input от AUD_AINL_MIC pin (микрофон, моно левый).
