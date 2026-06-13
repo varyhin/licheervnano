@@ -6,20 +6,22 @@ Phase 4 audio bring-up. После Phase 2 (DT-узлы добавлены в cv
 уровне board DTS чтобы drivers их подцепили.
 
 Активируются:
+  &dmac       AXI DMA controller (DMA-каналы для I2S)
   &dmamux     DMA router (нужен для I2S DMA channels)
-  &i2s1       I2S/TDM controller (общий cpu DAI для capture и playback)
+  &i2s0       I2S controller, capture path (cpu DAI микрофона)
+  &i2s3       I2S controller, playback path (cpu DAI динамика)
   &sound_adc  internal ADC codec (микрофон LMA2718T421)
   &sound_dac  internal DAC codec (динамик через AW8010A)
 
 Добавляется новый узел `sound` (simple-audio-card) с двумя DAI links:
-  link@0: capture path  это i2s1 ↔ sound_adc (микрофон)
-  link@1: playback path это i2s1 ↔ sound_dac (динамик)
+  link@0: capture path  это i2s0 ↔ sound_adc (микрофон)
+  link@1: playback path это i2s3 ↔ sound_dac (динамик)
 
-Оба link'а через один и тот же I2S1 controller (CV1800B позволяет
-duplex через i2s1). I2S2 пока не активирован, поскольку mainline
-commit message предупреждает: "I2S2 output pins cannot be enabled via
-pinctrl alone, due to SoC design constraints, the output path becomes
-functional only after additional vendor-specific register programming".
+Capture и playback идут через два отдельных I2S controller'а (i2s0 и
+i2s3). I2S1/I2S2 не активированы; вдобавок mainline commit message
+предупреждает: "I2S2 output pins cannot be enabled via pinctrl alone,
+due to SoC design constraints, the output path becomes functional only
+after additional vendor-specific register programming".
 
 Известные ограничения этого patch:
 1. AW8010A enable GPIO (GPIOA[15]=SPK_EN) НЕ настроен в DT. Без
