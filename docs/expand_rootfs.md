@@ -73,11 +73,12 @@ w        write changes
 ### Шаг 4. Перечитать таблицу разделов
 
 ```
-partprobe /dev/mmcblk0
+partprobe /dev/mmcblk0   # требует пакет parted (в образе нет)
 ```
 
-Если `partprobe` не подхватил (ошибка BLKRRPART), просто `reboot`. После
-перезагрузки таблица будет актуальной.
+`partprobe` входит в пакет `parted`, которого в образе нет (`apt install
+-y parted`). Без него перечитать таблицу можно `partx -u /dev/mmcblk0`
+(util-linux) или просто `reboot`. После перезагрузки таблица актуальна.
 
 ### Шаг 5. Расширить файловую систему
 

@@ -75,10 +75,9 @@ lsmod | grep dwc2
 # dwc2  ...
 
 dmesg | grep -i -E "dwc2|usb@4340000"
-# ожидаем: dwc2 4340000.usb: ...
-#         dwc2 4340000.usb: Configuration of DMA failed/OK
+# ожидаем: dwc2 4340000.usb: EPs: 8, dedicated fifos, 3072 entries in SPRAM
 #         dwc2 4340000.usb: DWC OTG Controller
-#         dwc2 4340000.usb: new USB bus number N
+#         dwc2 4340000.usb: new USB bus registered, assigned bus number N
 
 # Платформенный узел probed
 ls /sys/bus/platform/devices/4340000.usb 2>/dev/null
@@ -152,7 +151,7 @@ CONFIG_USB_CONFIGFS_MASS_STORAGE=y
 CONFIG_USB_CONFIGFS_F_FS=y
 ```
 
-В нашем kernel-конфиге эти опции включены, кроме `MASS_STORAGE` и `F_FS` (блок scripts/config цели `kernel` в Makefile).
+В нашем kernel-конфиге включены все перечисленные: SERIAL/ACM/NCM/RNDIS/ECM явно через `--enable` (блок scripts/config цели `kernel` в Makefile), а `MASS_STORAGE` и `F_FS` идут `=y` по умолчанию при `USB_CONFIGFS` (подтверждено `/proc/config.gz` на плате).
 
 ### Пример настройки composite-устройства
 
