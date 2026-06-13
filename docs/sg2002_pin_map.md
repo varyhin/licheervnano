@@ -112,8 +112,8 @@ header. Полная таблица для всех SoC pins в xlsx файле,
 | 7 | SD0_CMD | 0x0300_1020 | SDIO0_CMD | IIC1_SCL | SPI0_SDO | XGPIOA[8] | - | PWM[14] | EPHY_SPD_LED | DBG[1] |
 | 8 | SD0_D0 | 0x0300_1024 | SDIO0_D0 | CAM_MCLK1 | SPI0_SDI | XGPIOA[9] | UART3_TX | PWM[13] | WG0_D0 | DBG[2] |
 | 12 | SD0_D3 | 0x0300_1030 | SDIO0_D3 | CAM_MCLK0 | SPI0_CS_X | XGPIOA[12] | UART3_RX | PWM[10] | WG1_D1 | DBG[5] |
-| 18 | UART0_TX | 0x0300_104C | UART0_TX | CAM_MCLK1 | PWM[4] | XGPIOA[16] | UART1_TX | AUX1 | - | DBG[6] |
-| 19 | UART0_RX | 0x0300_1050 | UART0_RX | CAM_MCLK0 | PWM[5] | XGPIOA[17] | UART1_RX | AUX0 | - | DBG[7] |
+| 18 | UART0_TX | 0x0300_1040 | UART0_TX | CAM_MCLK1 | PWM[4] | XGPIOA[16] | UART1_TX | AUX1 | - | DBG[6] |
+| 19 | UART0_RX | 0x0300_1044 | UART0_RX | CAM_MCLK0 | PWM[5] | XGPIOA[17] | UART1_RX | AUX0 | - | DBG[7] |
 | 26 | JTAG_CPU_TMS | 0x0300_1064 | JTAG_TMS | CAM_MCLK0 | PWM[7] | XGPIOA[19] | UART1_RTS | AUX0 | UART1_TX | DBG[9] |
 | 27 | JTAG_CPU_TCK | 0x0300_1068 | JTAG_TCK | CAM_MCLK1 | PWM[6] | XGPIOA[18] | UART1_CTS | AUX1 | UART1_RX | DBG[8] |
 | 28 | IIC0_SCL | 0x0300_1070 | IIC0_SCL | UART1_TX | UART2_TX | XGPIOA[28] | - | WG0_D0 | - | DBG[10] |
@@ -127,7 +127,7 @@ header. Полная таблица для всех SoC pins в xlsx файле,
 | 54 | SD1_D0 | 0x0300_10DC | PWR_SD1_D0 | SPI2_SDI | IIC1_SDA | PWR_GPIO[21] | CAM_MCLK1 | UART3_RTS | PWR_SPINOR1_MISO | PWM[7] |
 | 55 | SD1_CMD | 0x0300_10E0 | PWR_SD1_CMD | SPI2_SDO | IIC3_SCL | PWR_GPIO[22] | - | EPHY_LNK_LED | PWR_SPINOR1_MOSI | PWM[8] |
 | 56 | SD1_CLK | 0x0300_10E4 | PWR_SD1_CLK | SPI2_SCK | IIC3_SDA | PWR_GPIO[23] | - | EPHY_SPD_LED | PWR_SPINOR1_SCK | PWM[9] |
-| 59 | ADC1 | (no pinmux, ADC dedicated) | ADC1 (SAR) | - | - | XGPIOB[3] | KEY_COL2 | - | - | - |
+| 59 | ADC1 | 0x0300_10F8 | ADC1 (SAR) | - | - | XGPIOB[3] | KEY_COL2 | - | - | - |
 
 Используемые в текущей сборке pinmux установки (задаются pinctrl-группами
 board-DTS, патч `patches/linux/0021`; I2C1/I2C3 только на B/E, на W/WE их
