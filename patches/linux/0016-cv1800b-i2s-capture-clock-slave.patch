@@ -37,8 +37,9 @@ cv1800b-sound-adc.c:
 - CTUNE (ANA3 bits[11:8]) НЕ пишется: vendor-запись редундантна (на железе
   CTUNE=0 не дал разницы), это патч 0014 удалён. Сбросовый дефолт 0xC подтверждён
   на железе (live ANA3 0x0300a11c = 0x00051C1C, [11:8]=0xC; драйвер CTUNE не пишет).
-- макросы REG_EN_DITHER/RSTSDM/VCMT_RXADC определены, но не используются
-  (остаток заброшенного SDM-init эксперимента), оставлены как reserved.
+- мёртвые ANA3 bit-макросы (REG_CTUNE/EN_DITHER/RSTSDM/VCMT_RXADC) удалены:
+  не использовались, vendor codec этих бит не трогает (остаток заброшенного
+  SDM-init эксперимента).
 
 Проверено на железе: захват детерминированный (один слот, один уровень), моно
 на честных 48 кГц, старт без транзиента, playback (i2s3 master) не задет.
@@ -132,20 +133,7 @@ cv1800b-sound-adc.c:
  #include <linux/kernel.h>
  #include <linux/bitops.h>
  
-@@ -50,6 +51,12 @@
- #define REG_MUTEL_RXPGA                GENMASK(0, 0)
- #define REG_MUTER_RXPGA                GENMASK(1, 1)
- 
-+/* CV1800B_RXADC_ANA3 */
-+#define REG_CTUNE_RXADC                GENMASK(11, 8)
-+#define REG_EN_DITHER_RXADC            GENMASK(12, 12)	/* sigma-delta dither */
-+#define REG_RSTSDM_RXADC               GENMASK(13, 13)	/* reset sigma-delta modulator */
-+#define REG_EN_VCMT_RXADC              GENMASK(14, 14)	/* enable common-mode (VCM) */
-+
- /* CV1800B_RXADC_CLK */
- #define REG_RXADC_CLK_INV              GENMASK(0, 0)
- #define REG_RXADC_SCK_DIV              GENMASK(15, 8)
-@@ -132,6 +139,11 @@
+@@ -132,6 +133,11 @@
  	val = u32_replace_bits(val, 0x19, REG_RXADC_DLYEN);
  	writel(val, priv->regs + CV1800B_RXADC_CLK);
  
@@ -157,7 +145,7 @@ cv1800b-sound-adc.c:
  	return 0;
  }
  
-@@ -179,14 +191,16 @@
+@@ -179,14 +185,16 @@
  		 readl(priv->regs + CV1800B_RXADC_ANA3));
  
  	/*
@@ -180,7 +168,7 @@ cv1800b-sound-adc.c:
  
  	/* Re-commit analog regs after reset (vendor rewrites ANA0/ANA2). */
  	writel(readl(priv->regs + CV1800B_RXADC_ANA2),
-@@ -207,38 +221,79 @@
+@@ -207,38 +215,79 @@
  	val = u32_replace_bits(val, DECIMATION_64, REG_RXADC_CIC_OPT);
  	writel(val, priv->regs + CV1800B_RXADCC_CTRL1);
  
@@ -281,7 +269,7 @@ cv1800b-sound-adc.c:
  static int cv1800b_adc_dai_set_sysclk(struct snd_soc_dai *dai, int clk_id,
  				      unsigned int freq, int dir)
  {
-@@ -251,14 +306,15 @@
+@@ -251,14 +300,15 @@
  
  static const struct snd_soc_dai_ops cv1800b_adc_dai_ops = {
  	.hw_params = cv1800b_adc_hw_params,
