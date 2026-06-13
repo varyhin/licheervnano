@@ -18,6 +18,7 @@ PDF доступны без verify_code, datasheet'ы onboard-компонент
 
 - `https://github.com/orgs/sipeed` это GitHub-организация Sipeed, все публичные репозитории вендора (платы, SDK, инструменты).
 - `https://github.com/sipeed/LicheeRV-Nano-Build` это официальный сборочный SDK платы (osdrv + linux_5.10 + buildroot). Наш зафиксированный пин SHA лежит в `manifest/sources.mk` (`licheerv-nano-build-vendor`), снапшот используется как источник vendor-драйверов и init-последовательностей при mainline bring-up.
+- `https://github.com/milkv-duo/duo-files/tree/main/duo-256M` это файлы Milk-V Duo 256M (тот же SoC SG2002). В `datasheet/` лежат `sg2002_trm_en.pdf` (7.6 МБ), `sg2002_trm_cn.pdf` (9.9 МБ), `SG2002_Preliminary_Datasheet_V1.0-alpha_CN.pdf` (7.8 МБ). Это рабочее GitHub-зеркало TRM и datasheet БЕЗ verify_code/CAPTCHA, в отличие от Sipeed download-API. Raw англ. TRM: `https://raw.githubusercontent.com/milkv-duo/duo-files/main/duo-256M/datasheet/sg2002_trm_en.pdf`. В `hardware/` лежат файлы платы Duo (не LicheeRV Nano, низкая релевантность).
 
 ## Состав файлохранилища
 
@@ -267,10 +268,11 @@ build host в `/tmp/sipeed_dl/`:
 - `LicheeRV_Nano_v70405_specification_V1.0_en.pdf` (645 KB)
 - `SG2002_Preliminary_Datasheet_V1.0-alpha_CN.pdf` (8 MB)
 
-TRM SG2002 (18.5 MB) пока не скачан. Для cкачивания при необходимости:
+TRM SG2002 (англ., 7.6 МБ) проще брать с GitHub-зеркала milkv-duo БЕЗ verify_code:
 
 ```
-curl -s -A "Mozilla/5.0" \
-  "https://api.dl.sipeed.com/file/download?file_url=LICHEE/LicheeRV_Nano/07_Datasheet/SG2002_TRM_V1.0-alpha.pdf" \
-  -o /tmp/sipeed_dl/SG2002_TRM.pdf
+curl -fsSL -o /tmp/sg2002_trm_en.pdf \
+  "https://raw.githubusercontent.com/milkv-duo/duo-files/main/duo-256M/datasheet/sg2002_trm_en.pdf"
 ```
+
+Sipeed download-API (`api.dl.sipeed.com/file/download?file_url=...SG2002_TRM_V1.0-alpha.pdf`) без verify_code отдаёт `{"code":-1,"msg":"wrong code"}`, поэтому используем milkv-duo. PDF в репо не коммитим (конвенция), держим локально.
