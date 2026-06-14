@@ -22,10 +22,18 @@ mainline Linux 6.18.29.
 | gpiochip0 | porta (XGPIOA) | 0x03020000 | EMMC/SD0 power domain, console pins, header левая сторона |
 | gpiochip1 | portb (XGPIOB) | 0x03021000 | ETH PHY power domain (только E/WE) |
 | gpiochip2 | portc (XGPIOC) | 0x03022000 | MIPI power domain (camera/display, header не выводит) |
-| gpiochip3 | portd (PWR_GPIO) | 0x03023000 | RTC/SD1 power domain, header правая сторона |
+| gpiochip3 | portd (XGPIOD) | 0x03023000 | Active-домен GPIO3 |
 
 Каждый порт 32 линии (`ngpios = <32>`), всего теоретически 128 GPIO.
 Реально физически выведено намного меньше (см. `docs/sg2002_pin_map.md`).
+
+Банк RTCSYS_GPIO (No-die домен, база 0x05021000) в текущем ядре как Linux gpiochip
+не инстанцируется. `gpiodetect` на железе показывает только gpiochip0-3 по
+0x0302_0000..0x0302_3000. Пады правой стороны header (SD1_D3/D0/CMD/CLK) в GPIO-режиме
+это PWR_GPIO[18..23], относящиеся к RTCSYS_GPIO, поэтому как Linux-GPIO они недоступны
+и работают только в периферийных функциях (I2C1/I2C3 в этой сборке, SDIO1 на W/WE).
+Источник: TRM гл.10 PINMUX (PWR_GPIO[N] = SD1_* funcsel 3) и гл.21 GPIO
+(RTCSYS_GPIO 0x05021000, отдельный от GPIO3 0x03023000).
 
 ## Header pins → gpiochip lines
 
@@ -47,15 +55,18 @@ mainline Linux 6.18.29.
 | GPIOA 28 | gpiochip0 line 28 | UART2 TX (pinmux 0x2) | переключить можно, потеряете UART2 |
 | GPIOA 29 | gpiochip0 line 29 | UART2 RX (pinmux 0x2) | переключить можно, потеряете UART2 |
 | GPIOA 30 | gpiochip0 line 30 | USER button KEY_DISPLAYTOGGLE | через input event |
-| GPIOP 18 | нет линии gpiochip3 | не выведен (вакантный SoC pin 50, QFN-38) | заглушка, см. sg2002_pin_map.md |
-| GPIOP 19 | gpiochip3 line 18 | I2C1 SCL (pinmux 0x2) | SD1_D3, PWR_GPIO[18]; на W/WE это SDIO1 D3 |
-| GPIOP 20 | gpiochip3 line 23 | I2C3 SDA (pinmux 0x2) | SD1_CLK, PWR_GPIO[23]; на W/WE это SDIO1 CLK |
-| GPIOP 21 | gpiochip3 line 22 | I2C3 SCL (pinmux 0x2) | SD1_CMD, PWR_GPIO[22]; на W/WE это SDIO1 CMD |
-| GPIOP 22 | gpiochip3 line 21 | I2C1 SDA (pinmux 0x2) | SD1_D0, PWR_GPIO[21]; на W/WE это SDIO1 D0 |
+| GPIOP 18 | — (не выведен) | не выведен (вакантный SoC pin 50, QFN-38) | заглушка, см. sg2002_pin_map.md |
+| GPIOP 19 | нет Linux chip (PWR_GPIO[18]/RTCSYS) | I2C1 SCL (pinmux 0x2) | SD1_D3; на W/WE это SDIO1 D3 |
+| GPIOP 20 | нет Linux chip (PWR_GPIO[23]/RTCSYS) | I2C3 SDA (pinmux 0x2) | SD1_CLK; на W/WE это SDIO1 CLK |
+| GPIOP 21 | нет Linux chip (PWR_GPIO[22]/RTCSYS) | I2C3 SCL (pinmux 0x2) | SD1_CMD; на W/WE это SDIO1 CMD |
+| GPIOP 22 | нет Linux chip (PWR_GPIO[21]/RTCSYS) | I2C1 SDA (pinmux 0x2) | SD1_D0; на W/WE это SDIO1 D0 |
 
 Чтобы переключить пин в чистый GPIO режим (выйти из I2C/UART функции),
 надо записать pinmux register на функцию `0x3` (XGPIO) через
-`busybox devmem`. См. `docs/sg2002_pin_map.md` колонку Func3.
+`busybox devmem`. См. `docs/sg2002_pin_map.md` колонку Func3. Это работает
+для падов левой стороны (porta): Func3 = XGPIOA[n] = gpiochip0. Для правой
+стороны (SD1_*) Func3 = PWR_GPIO (RTCSYS_GPIO), который как Linux gpiochip не
+инстанцируется, поэтому GPIO там через devmem не получить.
 
 ## Базовая проверка
 
