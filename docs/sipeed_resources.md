@@ -161,14 +161,15 @@ input и backlight выйдет на FPC1 (page 4 schematic).
 70418 page 4, блок "10/100M PHY":
 
 - RJ1: 8-pin RJ45 connector
-- U7: 4-pin transformer для TX (PCAQ2012A-801T030 или PSTFAQ3416-600T020
-  по datasheet onboard)
-- U10: 4-pin transformer для RX (та же модель)
-- 4× 100nF caps по AC coupling между PHY pins SoC и transformers
+- U7: 4-pin transformer для TX-пары EPHY_CON_T_P/T_N (PCAQ2012A-801T030
+  или PSTFAQ3416-600T020 по datasheet onboard)
+- U8: 4-pin transformer для RX-пары EPHY_CON_R_P/R_N (та же модель)
+- AC coupling это C49/C50/C51/C52 (4× 100nF) + синфазные дроссели L5/L6
+  между SoC EPHY pins и transformers
 
-SoC pins:
-- EPHY_TXP (pin 65), EPHY_TXM (pin 64) → U8 → connector pairs T_P/T_N
-- EPHY_RXP (pin 63), EPHY_RXM (pin 62) → U7 → connector pairs R_P/R_N
+SoC pins (соответствие по схеме 70418 page 4):
+- EPHY_TXP (pin 65), EPHY_TXM (pin 64) → U7 → connector pairs T_P/T_N
+- EPHY_RXP (pin 63), EPHY_RXM (pin 62) → U8 → connector pairs R_P/R_N
 
 Наш patches/linux/0003-cv1800b-ephy-init-driver.patch обеспечивает
 init sequence для PHY чтобы он отвечал на MDIO bus. Без него PHY
@@ -204,11 +205,11 @@ USB OTG уже поднят патчем `patches/linux/0007-licheerv-nano-usb-d
 ### Audio output PA AW8010A + MIC LMA2718T421
 
 Page 4: U11 "INP/INN/EN/PVDD/AVDD/VOP/VON" pinout это AW8010A audio
-power amplifier. Принимает AUD_OUT с SoC pin 4 (PAD_AUD_AOUTR),
+power amplifier. Принимает AUD_OUT с SoC pin 4 (kernel-пад AUD_AOUTR, в datasheet PAD_AUD_AOUTR),
 выводит VO_P/VO_N (differential speaker output, до speaker pads).
 
 U12 это analog MEMS микрофон LMA2718T421 (output pin AUD_IN
-подключается к SoC pin 2 PAD_AUD_AINL_MIC).
+подключается к SoC pin 2, kernel-пад AUD_AINL_MIC, в datasheet PAD_AUD_AINL_MIC).
 
 Audio уже поднят патчами 0008-0010 (DT-узлы I2S/TDM + internal ADC/DAC
 codec, бэкпорт из mainline; активация в board-DTS).
@@ -233,7 +234,7 @@ header:
 
 ```
 voltage_header_mV = raw × 3300 × (10 + 5.1) / 5.1 / 4096
-                  = raw × 3300 / 1383.8
+                  = raw × 3300 / 1383.4
                   ≈ raw × 2.385
 ```
 

@@ -42,7 +42,7 @@ Nano) и их распиновка на 2x14-pin header Sipeed LicheeRV Nano.
 | Ethernet PHY | да на E/WE (SoC pins 62-65) | active на E/WE |
 | SDIO0 (boot SD) | да (SoC 6-12) | active как boot device |
 | SDIO1 (Wi-Fi AIC8800) | да на W/WE (SoC 51-56) | active на W/WE |
-| USB OTG | да (SoC pin 60) | active, DWC2 dual-role + ACM gadget |
+| USB OTG | да (D+/D- = SoC pins 69/70) | active, DWC2 dual-role + ACM gadget |
 | Audio mic | на плате (LMA2718T421 MEMS, аналоговый, SoC pin AUD_AINL_MIC) | работает (см. `docs/audio_setup.md`) |
 | Audio speaker | на header (VOP/VON выход AW8010A amp, динамик внешний 8Ω 1Вт) | работает (SPK_EN на время playback) |
 | GPIOA xx | XGPIOA[NN], gpiochip0 | active |
@@ -130,6 +130,11 @@ header. Полная таблица для всех SoC pins в xlsx файле,
 | 55 | SD1_CMD | 0x0300_10E0 | PWR_SD1_CMD | SPI2_SDO | IIC3_SCL | PWR_GPIO[22] | CAM_VS0 | EPHY_LNK_LED | PWR_SPINOR1_MOSI | PWM[8] |
 | 56 | SD1_CLK | 0x0300_10E4 | PWR_SD1_CLK | SPI2_SCK | IIC3_SDA | PWR_GPIO[23] | CAM_HS0 | EPHY_SPD_LED | PWR_SPINOR1_SCK | PWM[9] |
 | 59 | ADC1 | 0x0300_10F8 | ADC1 (SAR) | - | - | XGPIOB[3] | KEY_COL2 | - | PWM[3] | - |
+
+> Оговорка по ADC1 (SoC pin 59): Func-колонки это vendor-pinlist значения (в т.ч.
+> Func6=PWM[3]). Mainline-драйвер `pinctrl-sg2002.c` ограничивает этот пад
+> `mux_func_max=4`, поэтому Func5-7 (включая PWM[3]) через mainline не
+> программируются, доступны только Func0-4.
 
 Используемые в текущей сборке pinmux установки (задаются pinctrl-группами
 board-DTS, патч `patches/linux/0021`; I2C1/I2C3 только на B/E, на W/WE их

@@ -87,7 +87,7 @@ cat /sys/bus/iio/devices/iio:device0/in_voltage1_raw
 
 # Scale в mV/LSB
 cat /sys/bus/iio/devices/iio:device0/in_voltage_scale
-# 3300/2^12 ≈ 0.805 (рекомендация iio_info интерпретирует точно)
+# 3300/2^12 ≈ 0.806 (рекомендация iio_info интерпретирует точно)
 
 # Sampling frequency
 cat /sys/bus/iio/devices/iio:device0/sampling_frequency

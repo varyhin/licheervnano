@@ -80,8 +80,9 @@ gpioinfo
 ```
 
 Kernel занимает линии 14 (USER LED через gpio-leds) и 30 (USER button
-через gpio-keys), они показываются как `consumer="gpio-keys"` или
-`consumer="leds-gpio"` в `gpioinfo`.
+через gpio-keys). В `gpioinfo` они показываются по имени потребителя: линия 14
+как `consumer="licheerv-nano:blue:user"` (имя cdev LED), линия 30 как
+`consumer="user"` (метка кнопки из gpio-keys).
 
 ## Чтение и установка линии
 

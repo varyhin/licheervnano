@@ -7,14 +7,14 @@
 
 ## Что должно быть до начала
 
-- Boot варианта W из extlinux меню (пункт 3)
+- Boot варианта W из extlinux меню (пункт 4, `label nano-w`, «LicheeRV Nano-W»)
 - Модули загружены автоматически через udev:
 
 ```
 lsmod | grep aic8800
 # aic8800_fdrv
 # aic8800_bsp
-# cfg80211
+# aic8800_btlpm
 ```
 
 - Интерфейс `wlan0` присутствует:
