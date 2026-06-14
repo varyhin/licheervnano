@@ -45,4 +45,5 @@
 
 - `docs/sg2002_pin_map.md` это распиновка 2x14 header (+ `assets/RV_Nano_3.jpg`)
 - `docs/sipeed_resources.md` это варианты плат, Ethernet, ссылки на schematic/datasheet
+- `docs/datasheets/` это SG2002 TRM и схемы LicheeRV Nano (70405/70415/70418) + манифест с SHA256
 - per-peripheral `docs/*_setup.md` это bring-up каждой подсистемы (audio, gpio, led, usb, wifi, ...)

@@ -258,22 +258,22 @@ monitoring и аналогичных.
 - [x] audio I2S+codec сделан патчами 0008-0010
 - [ ] MIPI DSI/CSI это отдельная крупная task
 
-## Где лежат скачанные PDF
+## Где лежат PDF
 
-PDF большие (5..18 MB), не коммитим в репо. Сохранены локально на
-build host в `/tmp/sipeed_dl/`:
+Схема (три ревизии) и SG2002 TRM закоммичены в `docs/datasheets/` с манифестом
+(имена, размеры, SHA256, источник, карта раздел->цитата) в
+`docs/datasheets/README.md`. Цитаты «по TRM гл.X Table Y» в преамбулах патчей
+и в docs привязаны к этим файлам по SHA256.
 
-- `LicheeRV_Nano-70405_Schematic.pdf` (754 KB)
-- `LicheeRV_Nano-70415_Schematic.pdf` (781 KB)
-- `LicheeRV_Nano-70418_Schematic.pdf` (760 KB)
-- `LicheeRV_Nano_v70405_specification_V1.0_en.pdf` (645 KB)
-- `SG2002_Preliminary_Datasheet_V1.0-alpha_CN.pdf` (8 MB)
+- `docs/datasheets/sg2002_trm_en.pdf` это Sophgo SG2002 TRM (918 стр)
+- `docs/datasheets/LicheeRV_Nano-70418_Schematic.pdf` это текущая ревизия (Rev 1.4)
+- `docs/datasheets/LicheeRV_Nano-70415_Schematic.pdf` (Rev 1.3)
+- `docs/datasheets/LicheeRV_Nano-70405_Schematic.pdf` (Rev 1.2)
 
-TRM SG2002 (англ., 7.6 МБ) проще брать с GitHub-зеркала milkv-duo БЕЗ verify_code:
+Источник и проверка checksum описаны в `docs/datasheets/README.md`. Альтернативное
+зеркало TRM без verify_code есть у milkv-duo (тот же SoC):
 
 ```
 curl -fsSL -o /tmp/sg2002_trm_en.pdf \
   "https://raw.githubusercontent.com/milkv-duo/duo-files/main/duo-256M/datasheet/sg2002_trm_en.pdf"
 ```
-
-Sipeed download-API (`api.dl.sipeed.com/file/download?file_url=...SG2002_TRM_V1.0-alpha.pdf`) без verify_code отдаёт `{"code":-1,"msg":"wrong code"}`, поэтому используем milkv-duo. PDF в репо не коммитим (конвенция), держим локально.
