@@ -20,7 +20,10 @@ reference 3.3V) под mainline Linux 6.18.29.
 
 ## Hardware
 
-SAR-ADC SG2002 имеет 3 входных канала:
+SAR-ADC SG2002 имеет 3 входных канала (TRM гл.21.7 SARADC). Наружу выведен
+единственный ADC-пад ADC1 (TRM гл.10 PINMUX, Table 10.1, SoC pin 59). Привязка
+ADC1 к индексу канала 1 это факт mainline-драйвера (`sophgo-cv1800b-adc.c`,
+`in_voltage1_raw`), в TRM соответствие пад->индекс канала не задано.
 
 - channel 0: internal SoC pad (не выведен на header)
 - channel 1: header pin "ADC1" (SoC pin 59, отдельный pad ADC1),

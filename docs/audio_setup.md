@@ -503,7 +503,7 @@ arecord -D plughw:0,0 -c 1 -r 48000 -f S16_LE -d 5 /tmp/mic.wav
 | RXADC_CTRL0 | в `prepare`: `\|= RXADC_EN \| I2S_TX_EN`; в `shutdown` сбрасывает; `trigger` пуст («adc on до i2s reset») | в `trigger START`: оба бита=1; `STOP`: =0 | в `prepare`: оба=1; в `shutdown`: =0 (нет `trigger`) |
 | RXADCC_CTRL1 | `probe`: `\|= IGR_INIT` (b8); `hw_params`: CIC_OPT по rate (48k → CIC_DS_64) | `hw_params`: IGR_INIT=1, CIC_OPT=DECIMATION_64 (0) | как mainline (IGR_INIT=1, CIC=64) |
 | RXADC_STATUS | только чтение (suspend save/restore) | не трогается | не трогается |
-| RXADC_CLK | `hw_params`: `SCK_DIV(4) \| DLYEN(0x19)` | `hw_params`→`setbclk_div`: SCK_DIV=bclk_div (=3), DLYEN=0x19 | то же (SCK_DIV, DLYEN); CTUNE не пишется (0014 удалён) |
+| RXADC_CLK | `hw_params`: `SCK_DIV(3) \| DLYEN(0x19)` (vendor cv181xadc.c в репо нет, значение по той же формуле bclk_div) | `hw_params`→`setbclk_div`: SCK_DIV=bclk_div (=3), DLYEN=0x19 | то же (SCK_DIV, DLYEN); CTUNE не пишется (0014 удалён) |
 | RXADC_ANA0 | gain через ioctl/kcontrol; `prepare` переписывает тем же значением после reset | gain через kcontrol; `hw_params` не трогает | gain через kcontrol; `hw_params` re-commit после soft-reset |
 | RXADC_ANA2 | mute через ioctl/kcontrol; `prepare` переписывает после reset | маски есть, контрола нет, не пишется | `hw_params` re-commit после soft-reset |
 | RXADC_ANA3 | `hw_params`: CTUNE по MCLK (48k → 0xC); DITHER/RSTSDM/VCMT не трогает | НЕ трогается (нет CTUNE) | CTUNE не программируется (0014 удалён, 0xC это сброс-дефолт); SDM-биты ANA3 (DITHER/RSTSDM/VCMT) не трогаются |
