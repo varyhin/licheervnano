@@ -138,8 +138,7 @@ cross-build, model compilation with the tpu-mlir container, bench kit,
 the full pipeline from ONNX to running on the board) is not part of
 this repository.
 See [docs/tpu_sg2002.md](docs/tpu_sg2002.md) for the TPU block overview.
-Anchor numbers: mobilenet_v2 BF16 about 22 ms, yolov5s INT8 with INT8
-I/O about 77 ms at 700 MHz.
+Anchor number: mobilenet_v2 BF16 about 22 ms at 700 MHz.
 
 ## Licensing
 

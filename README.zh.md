@@ -129,8 +129,7 @@ make image         # 完整构建：补丁、u-boot、opensbi、fsbl、内核、
 容器模型编译、基准测试套件、从 ONNX 到上板运行的完整流程）不在
 本仓库内，单独维护。
 TPU 模块概览见 [docs/tpu_sg2002.md](docs/tpu_sg2002.md)。
-参考数据：mobilenet_v2 BF16 约 22 ms，yolov5s INT8（INT8 输入输出）
-在 700 MHz 下约 77 ms。
+参考数据：mobilenet_v2 BF16 约 22 ms（700 MHz）。
 
 ## 许可证
 
