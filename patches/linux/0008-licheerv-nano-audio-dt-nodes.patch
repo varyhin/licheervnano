@@ -32,7 +32,9 @@ node-name это syscon@/i2s@/audio-codec@):
     Уже есть
     в mainline kernel (drivers/dma/cv1800b-dmamux.c). Offsets 0x154
     и 0x298 относительные к top_misc regmap (абсолютные адреса
-    0x3000154 и 0x3000298).
+    0x3000154 и 0x3000298). Соответствие devid->периферия по TRM гл.9
+    System Controller, Table 9.1 System DMA Channel Mapping (No.0 =
+    dma_rx_req_i2s0, No.7 = dma_tx_req_i2s3).
 
   i2s0@4100000 это I2S/TDM controller 0 (sophgo,cv1800b-i2s). RX это
     capture path к internal ADC. На SG2002 I2S0 разведён жёстко на

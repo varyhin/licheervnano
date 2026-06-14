@@ -11,9 +11,9 @@ nano-e/w/we.dts) через:
 Note: пады I2C1/I2C3 здесь только включаются; их pinmux переносится в
 board-DTS pinctrl патчем 0021 (группы i2c1_cfg/i2c3_cfg). Прежний
 runtime devmem-сервис setup-i2c-pinmux.service удалён 2026-06-11.
-Справочные регистры пинов из Sipeed wiki:
-  I2C1: 0x030010D0=0x2 (SCL), 0x030010DC=0x2 (SDA)
-  I2C3: 0x030010E0=0x2 (SCL), 0x030010E4=0x2 (SDA)
+Справочные регистры пинов (сверено по TRM гл.10 PINMUX, Table 10.35):
+  I2C1: SD1_D3 0x030010D0 func2=IIC1_SCL, SD1_D0 0x030010DC func2=IIC1_SDA
+  I2C3: SD1_CMD 0x030010E0 func2=IIC3_SCL, SD1_CLK 0x030010E4 func2=IIC3_SDA
 
 --- a/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-b.dts
 +++ b/arch/riscv/boot/dts/sophgo/sg2002-licheerv-nano-b.dts

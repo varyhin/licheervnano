@@ -13,8 +13,9 @@ cv181x.dtsi).
 DT-сторона целиком на mainline-ссылках, без out-of-tree биндингов:
   - клоки CLK_TPU/CLK_TPU_FAB реализованы в drivers/clk/sophgo/clk-cv1800.c
   - ресеты RST_TDMA/RST_TPU/RST_TPUSYS в arch/.../sophgo/cv18xx-reset.h
-  - reg: tdma 0xc100000 + tiu 0xc101000 (по 0x1000)
-  - IRQ: tiu=75, tdma=76. SOC_PERIPHERAL_IRQ(n)=n+16, поэтому
+  - reg: tdma 0xc100000 + tiu 0xc101000 (по 0x1000; в TRM Table 3.4 окно
+    0x0C000000-0x0FFFFFFF = Reserved, базы vendor-only)
+  - IRQ: tiu=75, tdma=76 (TRM гл.3 Table 3.2 TPU=75/TDMA=76). SOC_PERIPHERAL_IRQ(n)=n+16, поэтому
     IRQ(59)=75, IRQ(60)=76 (откалибровано по vendor saradc 0x64=IRQ(84)).
 
 Драйвер запрашивает только tdma (platform_get_irq index 1), tiu

@@ -10,8 +10,8 @@ Phase 4 audio bring-up. После Phase 2 (DT-узлы добавлены в cv
   &dmamux     DMA router (нужен для I2S DMA channels)
   &i2s0       I2S controller, capture path (cpu DAI микрофона)
   &i2s3       I2S controller, playback path (cpu DAI динамика)
-  &sound_adc  internal ADC codec (микрофон LMA2718T421)
-  &sound_dac  internal DAC codec (динамик через AW8010A)
+  &sound_adc  internal ADC codec (микрофон LMA2718T421, U12 по схеме 70418)
+  &sound_dac  internal DAC codec (динамик через AW8010A, U11 PA по схеме 70418)
 
 Добавляется новый узел `sound` (simple-audio-card) с двумя DAI links:
   link@0: capture path  это i2s0 ↔ sound_adc (микрофон)

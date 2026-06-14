@@ -7,7 +7,7 @@ board DTS в dual-role (otg) mode.
 Данные взяты из docs/sophgo_sg200x_ru/sg2002_hardware/SG2002_TRM_
 V1.0-alpha.pdf:
   - controller base address: 0x04340000 (64K)
-  - main proc IRQ: 30 (DTS SOC_PERIPHERAL_IRQ(14))
+  - main proc IRQ: 30 (DTS SOC_PERIPHERAL_IRQ(14); TRM гл.3 Table 3.2 USB=INT#30)
   - core: DesignWare DWC_otg
   - reset: RST_USB (id 11 в cv18xx-reset.h)
 
@@ -24,14 +24,16 @@ clocks. Драйвер dwc2 (drivers/usb/dwc2/platform.c) запрашивает
 поэтому в DT их не перечисляем. binding dwc2.yaml допускает clocks
 minItems 1.
 
-USB PHY встроенный (UTMI), control register System control 0x03000048.
+USB PHY встроенный (UTMI), control register System control 0x03000048
+(TRM гл.9 System Controller, usb_phy_ctrl_reg, Table 9.5).
 Mainline DWC2 управляет PHY через generic framework, отдельный PHY
 узел не описывается. Тип PHY драйвер берёт из GHWCFG и форсирует в
 UTMI quirk-функцией, DT-свойства phy_type в биндинге нет, поэтому оно
 не задаётся.
 
 FIFO размеры взяты из реального hw_params на cv180x (читается
-через debugfs /sys/kernel/debug/usb/4340000.usb/hw_params):
+через debugfs /sys/kernel/debug/usb/4340000.usb/hw_params; в TRM гл.21.6 USB
+эти потолки не публикуются, только список регистров USBC без GRXFSIZ и глубины DFIFO):
   - rx_fifo_size           = 1536  (используем 520, hw разрешает до 1536)
   - dev_nperio_tx_fifo_size = 32   (hw_max, ставим точно 32)
   - num_dev_ep             = 7    (поэтому 7 entries в g-tx-fifo-size)
