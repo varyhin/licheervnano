@@ -224,6 +224,7 @@ kernel: fetch-linux
 	  --disable LOCALVERSION_AUTO \
 	  --module CFG80211 --module MAC80211 --module RFKILL --enable WLAN \
 	  --enable CV1800B_EPHY_INIT --module MDIO_BUS_MUX_MMIOREG \
+	  --disable E1000E \
 	  --module BT --enable BT_BREDR --enable BT_LE \
 	  --module BT_HCIBTSDIO --module BT_RFCOMM --enable BT_RFCOMM_TTY \
 	  --module BT_BNEP --enable BT_BNEP_MC_FILTER --enable BT_BNEP_PROTO_FILTER \
@@ -496,6 +497,12 @@ rootfs-packages: _check_debootstrap_host
 	@# Разрешить ssh root login (default prohibit-password требует key)
 	sed -i '/^#PermitRootLogin prohibit-password/a PermitRootLogin yes' \
 	  $(ROOTFS)/etc/ssh/sshd_config
+	@# regulatory.db: mainline-ядро вкомпилировало только upstream-ключи
+	@# (sforshee, wens) и требует подписанную db (CFG80211_REQUIRE_SIGNED_REGDB).
+	@# Debian-вариант подписан ключом Debian, ядро его отвергает, и W/WE уходит
+	@# в мировой регдомен. Переключаем alternative на upstream-подпись.
+	chroot $(ROOTFS) update-alternatives --set regulatory.db \
+	  /lib/firmware/regulatory.db-upstream
 	@# Генерация локалей (en_US.UTF-8 default + ru_RU.UTF-8 доступна)
 	printf '$(LOCALE_GEN)' >> $(ROOTFS)/etc/locale.gen
 	-chroot $(ROOTFS) /usr/sbin/locale-gen
