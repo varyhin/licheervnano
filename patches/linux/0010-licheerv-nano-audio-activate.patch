@@ -37,8 +37,9 @@ after additional vendor-specific register programming".
     git -C src/linux apply patches/linux/0010-licheerv-nano-audio-activate.patch
 
 После применения board DTS компилируется и при probe drivers создают
-ALSA card `licheerv-nano` с capture и playback substreams. Реально
-работает только capture (по причинам выше).
+ALSA card `licheerv-nano` с capture и playback substreams. На железе
+работают оба: capture (микрофон) и playback (динамик через AW8010A,
+SPK_EN стрим-гейтится патчами 0012/0013).
 
 Ожидаемые ALSA устройства после boot:
     /proc/asound/cards   0 [licheervnano] : simple-card - licheerv-nano
