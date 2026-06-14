@@ -42,12 +42,19 @@ BUILD_OPENSBI := $(BUILD)/opensbi
 BUILD_FSBL    := $(BUILD)/fsbl
 BUILD_LINUX   := $(BUILD)/linux
 
-ROOTFS    := $(PROJ)/rootfs/trixie
+# Версия каталога модулей = KERNELRELEASE, который modules_install берёт
+# из этого файла после сборки ядра. Ленивое =, на чистом дереве файла
+# ещё нет; не использовать до цели kernel (иначе пусто, см. guard в рецептах).
+KERNEL_VER = $(shell cat $(BUILD_LINUX)/include/config/kernel.release 2>/dev/null)
+
+# Debian suite задаёт и путь ROOTFS, и параметр debootstrap ниже.
+DEBIAN_SUITE := trixie
+
+ROOTFS    := $(PROJ)/rootfs/$(DEBIAN_SUITE)
 FIRMWARE  := $(PROJ)/firmware
 IMAGES    := $(PROJ)/images
 
 # debootstrap config (см. targets debootstrap / rootfs-packages / rootfs)
-DEBIAN_SUITE   := trixie
 DEBIAN_MIRROR  := http://deb.debian.org/debian
 ROOT_PASSWORD  ?= sipeed
 TIMEZONE       ?= Europe/Moscow
@@ -104,7 +111,7 @@ help:
 	@echo "  image            собрать images/licheervnano.img + .img.gz (требует root)"
 	@echo "  clean            rm -rf build/"
 	@echo "  distclean        clean + patches-revert"
-	@echo "  debootstrap      создать rootfs/trixie с нуля (требует root,"
+	@echo "  debootstrap      создать rootfs/$(DEBIAN_SUITE) с нуля (требует root,"
 	@echo "                   debootstrap, qemu-user-static; ~5 мин + интернет)"
 	@echo "  rootfs-packages  apt install EXTRA_PKGS в существующий rootfs"
 	@echo "                   через chroot (требует qemu-user-static + интернет)"
@@ -254,7 +261,8 @@ kernel: fetch-linux
 	  --enable DMABUF_HEAPS --enable DMABUF_HEAPS_SYSTEM --enable DMABUF_HEAPS_CMA
 	$(KMAKE) -C $(SRC_LINUX) O=$(BUILD_LINUX) LOCALVERSION= olddefconfig
 	$(KMAKE) -C $(SRC_LINUX) O=$(BUILD_LINUX) LOCALVERSION= $(JOBS) Image dtbs modules
-	rm -rf $(ROOTFS)/lib/modules/6.18.29
+	@test -n "$(KERNEL_VER)" || { echo "ERROR: KERNEL_VER пуст, ядро не собрано"; exit 1; }
+	rm -rf $(ROOTFS)/lib/modules/$(KERNEL_VER)
 	$(KMAKE) -C $(SRC_LINUX) O=$(BUILD_LINUX) \
 	  INSTALL_MOD_PATH=$(ROOTFS) INSTALL_MOD_STRIP=1 modules_install
 
@@ -294,13 +302,14 @@ usb-gadget-install:
 
 aic8800-install: aic8800
 	@echo "==> aic8800-install (rootfs + depmod + modprobe.d)"
-	mkdir -p $(ROOTFS)/lib/modules/6.18.29/extra/aic8800
+	@test -n "$(KERNEL_VER)" || { echo "ERROR: KERNEL_VER пуст, сначала make kernel"; exit 1; }
+	mkdir -p $(ROOTFS)/lib/modules/$(KERNEL_VER)/extra/aic8800
 	cp $(SRC_AIC_BSP)/aic8800_bsp.ko \
 	   $(SRC_AIC_FDRV)/aic8800_fdrv.ko \
 	   $(SRC_AIC_BTLPM)/aic8800_btlpm.ko \
-	   $(ROOTFS)/lib/modules/6.18.29/extra/aic8800/
-	$(CROSS)strip --strip-debug $(ROOTFS)/lib/modules/6.18.29/extra/aic8800/*.ko
-	depmod -a -b $(ROOTFS) 6.18.29
+	   $(ROOTFS)/lib/modules/$(KERNEL_VER)/extra/aic8800/
+	$(CROSS)strip --strip-debug $(ROOTFS)/lib/modules/$(KERNEL_VER)/extra/aic8800/*.ko
+	depmod -a -b $(ROOTFS) $(KERNEL_VER)
 	@# Прошивка чипа AIC8801 U03 (модуль Sipeed AIC8800D80; комплект u03
 	@# + fmacfw/fmacfwbt + userconfig).
 	@# Путь зашит дефолтом CONFIG_AIC_FW_PATH в aic8800_bsp/Makefile.
@@ -334,10 +343,11 @@ soph_tpu:
 
 soph_tpu-install: soph_tpu
 	@echo "==> soph_tpu-install (rootfs + depmod)"
-	mkdir -p $(ROOTFS)/lib/modules/6.18.29/extra
-	cp $(SRC_CVITEK_TPU)/soph_tpu.ko $(ROOTFS)/lib/modules/6.18.29/extra/
-	$(CROSS)strip --strip-debug $(ROOTFS)/lib/modules/6.18.29/extra/soph_tpu.ko
-	depmod -a -b $(ROOTFS) 6.18.29
+	@test -n "$(KERNEL_VER)" || { echo "ERROR: KERNEL_VER пуст, сначала make kernel"; exit 1; }
+	mkdir -p $(ROOTFS)/lib/modules/$(KERNEL_VER)/extra
+	cp $(SRC_CVITEK_TPU)/soph_tpu.ko $(ROOTFS)/lib/modules/$(KERNEL_VER)/extra/
+	$(CROSS)strip --strip-debug $(ROOTFS)/lib/modules/$(KERNEL_VER)/extra/soph_tpu.ko
+	depmod -a -b $(ROOTFS) $(KERNEL_VER)
 
 fip:
 	@echo "==> fip container"
