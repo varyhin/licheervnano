@@ -28,8 +28,21 @@ interrupts опциональны (interrupts только pretimeout, platform_
 optional), reset опционально-shared (deassert на probe). Базовый
 reset-по-таймауту IRQ не требует.
 
-НЕ проверено на железе на момент генерации (нужен boot + /dev/watchdog0 +
-тест укуса/reset по таймауту).
+Проверено на железе (E-плата, сборка 3d5075b8, 2026-06-14). Узел поднялся,
+/dev/watchdog0 создан, identity "Synopsys DesignWare Watchdog", tclk 25 МГц,
+state inactive, bootstatus 0.
+
+При probe драйвер печатает dev_warn "No valid TOPs array specified". Это
+ожидаемо и безвредно. COMP_PARAMS_1 (0x30100f4) bit6 USE_FIX_TOP = 0, а
+свойства snps,watchdog-tops в DT нет (его не задаёт ни одна mainline-плата),
+поэтому драйвер берёт встроенную таблицу dw_wdt_fix_tops (2^16..2^31). Для
+этого SoC она верна, подтверждено замером: дефолтные 30 с драйвер клампит до
+timeout=42 с, ровно 2^30/25МГц, значит реальные top железа совпадают с
+fix_tops. snps,watchdog-tops намеренно не добавлено как неидиоматичное для
+mainline и поведенчески тождественное fallback.
+
+Reset-по-таймауту на железе ещё не гонялся (запуск watchdog нужен
+контролируемо).
 
 --- a/arch/riscv/boot/dts/sophgo/cv180x.dtsi
 +++ b/arch/riscv/boot/dts/sophgo/cv180x.dtsi
