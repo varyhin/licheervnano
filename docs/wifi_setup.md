@@ -75,6 +75,57 @@ wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant-wlan0.conf -D n
 
 При старте драйвер aic8800 печатает `nl80211: kernel reports: Registration to specific type not supported`. Это безобидный варнинг: supplicant просит подписку на отдельные подтипы management-фреймов, которую драйвер не поддерживает. На ассоциацию и работу STA это не влияет. Признак успешного старта это строка `Successfully initialized wpa_supplicant`.
 
+## Сканирование доступных сетей
+
+Перед добавлением сети полезно посмотреть, что чип видит в эфире. Имя SSID, тип шифрования и уровень сигнала берутся прямо из результата скана.
+
+### Через wpa_cli (нужен запущенный supplicant)
+
+```
+wpa_cli -i wlan0 scan            # запустить скан, вернёт OK
+sleep 3                          # дать чипу обойти каналы
+wpa_cli -i wlan0 scan_results    # таблица найденных точек
+```
+
+Колонки `scan_results` это `bssid / frequency / signal level / flags / ssid`. Поле `flags` показывает тип защиты и определяет параметры из раздела «Добавление сети»:
+
+- `[WPA2-PSK-CCMP][ESS]` это WPA2 Personal, нужен `key_mgmt=WPA-PSK`
+- `[WPA2-PSK+SAE-...]` это transition-режим, годится `key_mgmt='WPA-PSK SAE'` и `ieee80211w=1`
+- `[RSN-SAE-CCMP][MFPR][ESS]` это WPA3 Personal, нужен `key_mgmt=SAE` и `ieee80211w=2`
+- `[ESS]` без `WPA`/`RSN` это открытая сеть, `key_mgmt=NONE`
+
+Поле `signal level` в dBm. Чем ближе к нулю, тем сильнее: `-50` отличный сигнал, `-70` рабочий, ниже `-80` ассоциация ненадёжна.
+
+Отфильтровать по имени сети:
+
+```
+wpa_cli -i wlan0 scan_results | grep -i ИМЯ_СЕТИ
+```
+
+Точки со скрытым SSID попадут в таблицу с пустым полем имени (виден только bssid). Подключение к ним описано в «Скрытая сеть».
+
+### Через iw (без supplicant)
+
+Работает, даже если supplicant не запущен, нужен лишь поднятый интерфейс (`ip link set wlan0 up`). Сырой вывод подробнее, но многословнее:
+
+```
+iw dev wlan0 scan | grep -iE 'SSID|signal|RSN|WPA'
+```
+
+Только список имён сетей:
+
+```
+iw dev wlan0 scan | grep SSID:
+```
+
+Карточка одной точки целиком:
+
+```
+iw dev wlan0 scan | grep -B1 -A6 ИМЯ_СЕТИ
+```
+
+Полезно, когда supplicant ещё не настроен или нужно проверить, что чип вообще принимает beacon. В `iw` тип защиты виден в блоках `RSN:` (WPA2/WPA3) и `WPA:` (старый WPA), наличие `Authentication suites: SAE` указывает на WPA3.
+
 ## Добавление сети через wpa_cli
 
 После старта supplicant конфиг можно менять через `wpa_cli` без перезаписи файла. Шаги одинаковы для всех типов сетей, отличаются только параметры внутри.
