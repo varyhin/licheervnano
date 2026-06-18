@@ -54,9 +54,11 @@ ip link set wlan0 up
 Создать один раз. Файл `/etc/wpa_supplicant/wpa_supplicant-wlan0.conf`:
 
 ```
+cat > /etc/wpa_supplicant/wpa_supplicant-wlan0.conf <<'EOF'
 ctrl_interface=DIR=/run/wpa_supplicant GROUP=root
 update_config=1
 country=RU
+EOF
 ```
 
 `ctrl_interface` нужен чтобы работал `wpa_cli` (управление supplicant из терминала). `update_config=1` разрешает supplicant сохранять изменения через `save_config`. `country=RU` задаёт регуляторный домен для разрешённых каналов.
