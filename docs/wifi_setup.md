@@ -3,7 +3,63 @@
 Краткая инструкция для Wi-Fi на чипе AIC8800D80 (физически AIC8801 U03) + wpa_supplicant + dhclient в Debian 13 на варианте W.
 
 Статус: работает на железе W (2026-06-11), powersave чипа отключён
-опцией ps_on=0 (см. «Известные особенности»).
+опцией ps_on=0 (см. «Известные особенности»). После reboot на W/WE Wi-Fi
+теперь поднимается сам без снятия питания, это FSBL-осушение AIC8801 (hw-verified
+2026-07-04, см. «Известные особенности AIC8801»).
+
+## Быстрый старт (по шагам)
+
+Линейная последовательность для варианта W. Подставь свои значения вместо `ВАШ_SSID` и `ВАШ_ПАРОЛЬ`, реальные креды в доку не пишем. Разбор каждого шага в разделах ниже.
+
+1. Выбрать вариант W в extlinux (если плата ещё не на W) и перезагрузиться. `reboot` работает, Wi-Fi встаёт сам, холодный power cycle больше не нужен:
+
+```
+mount /dev/mmcblk0p1 /mnt
+sed -i 's/^default .*/default nano-w/' /mnt/extlinux/extlinux.conf
+head -3 /mnt/extlinux/extlinux.conf      # проверить строку: default nano-w
+sync
+umount /mnt
+reboot
+```
+
+2. Посмотреть эфир:
+
+```
+wpa_cli -i wlan0 scan            # вернёт OK
+sleep 3
+wpa_cli -i wlan0 scan_results    # таблица найденных сетей
+```
+
+3. Записать конфиг сети (пример WPA2-PSK) и подключиться:
+
+```
+cat > /etc/wpa_supplicant/wpa_supplicant-wlan0.conf <<'EOF'
+ctrl_interface=DIR=/run/wpa_supplicant GROUP=root
+update_config=1
+country=RU
+
+network={
+    ssid="ВАШ_SSID"
+    key_mgmt=WPA-PSK
+    psk="ВАШ_ПАРОЛЬ"
+}
+EOF
+chmod 600 /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
+wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant-wlan0.conf -D nl80211
+dhclient -v wlan0
+```
+
+4. Включить автоконнект на загрузке:
+
+```
+cat > /etc/network/interfaces.d/wlan0 <<'EOF'
+allow-hotplug wlan0
+iface wlan0 inet dhcp
+    wpa-conf /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
+EOF
+```
+
+Для WPA3 (SAE), скрытой или открытой сети смотри раздел «Добавление сети через wpa_cli».
 
 ## Переключение варианта E ↔ W на плате
 
@@ -19,7 +75,9 @@ umount /mnt
 
 Обратно на E это `default nano-e`, на WE это `default nano-we`.
 
-Важно про первый старт W. Не делать `reboot`, а выключить плату, снять питание на 10+ секунд и включить заново. Тёплая перезагрузка из E часто оставляет радио AIC8801 в полузастрявшем состоянии: `aic8800_bsp` грузится, но фаза power-on чипа таймаутит (`-110`), `aic8800_fdrv` не биндится и `wlan0` не появляется. Питание при reboot удерживается, поэтому сбрасывает чип только снятие питания. Полный признак в `dmesg` и причина описаны в «Известные особенности AIC8801».
+Про первый старт W и переключение E→W. С фиксом FSBL-осушения (hw-verified 2026-07-04) `reboot` работает: FSBL обесточивает AIC8801 на загрузке, чип успевает осушиться, и в Linux `mmc-pwrseq` поднимает питание, радио встаёт само. Снимать питание вручную больше не нужно.
+
+Историческая справка (без фикса). Раньше тёплая перезагрузка удерживала питание чипа, и радио оставалось в полузастрявшем состоянии: `aic8800_bsp` грузится, но фаза power-on таймаутит (`-110`), `aic8800_fdrv` не биндится, `wlan0` не появляется. Лечилось только снятием питания на 10+ секунд. Симптом и механизм в «Известные особенности AIC8801».
 
 ## Что должно быть до начала
 
@@ -260,9 +318,9 @@ ifup wlan0
 ip addr show wlan0      # ждём inet
 ```
 
-Проверено на железе W (2026-06-15): после холодного `poweroff/poweron` и после обычного `reboot` `wlan0` поднимается сам и получает IP по DHCP без ручных команд.
+Проверено на железе W: после холодного `poweroff/poweron` `wlan0` поднимается сам и получает IP по DHCP без ручных команд (2026-06-15). После обычного `reboot` `wlan0` также встаёт сам благодаря FSBL-осушению AIC8801 (hw-verified 2026-07-04: несколько `reboot` подряд на W и переключение B→nano-w, каждый раз wlan0 поднимался).
 
-Напоминание про смену варианта. Автоконнект не отменяет правило из «Переключение варианта E ↔ W». При первом старте после переключения E → W радио AIC8801 надо поднимать холодным power cycle, тёплый reboot оставляет его залипшим (см. «Известные особенности AIC8801»). Обычные перезагрузки уже внутри W этим не страдают.
+Напоминание про смену варианта. С фиксом FSBL-осушения переключение E→W (и B→W) и любой `reboot` поднимают радио сами, холодный power cycle больше не требуется (см. «Известные особенности AIC8801»).
 
 ## Подключение к нескольким сетям
 
@@ -330,7 +388,7 @@ EOF
 - Чип на плате идентифицируется как `AIC8801 U03` через SDIO vid/did `0x5449/0x0145`, но физически поддерживает 802.11ax (Wi-Fi 6) на firmware `u03`. Sipeed маркетит вариант W как AIC8800D80.
 - Firmware blobs живут в `/usr/lib/firmware/aic8800_sdio/aic8800_and_aic8800D80/` (не в стандартном `/lib/firmware/aic8800D80/`). Источник это `firmware/aic8800_u03/` репозитория (полный комплект из 13 файлов, прошивка AICSemi, взята побитово из зеркала `gtxaspec/aic8800-wifi` (каталог `SDIO/driver_fw/fw/aic8800/`, sha256 совпадает)), в rootfs ставится target-ом `make aic8800-install`. Комплект обязан быть полным. Без `fmacfw_patch.bin` (76 байт) драйвер фатально падает в normal mode, а выборка «только файлы из таблицы fw_u03» недостаточна.
 - Пады SDIO Wi-Fi (`SD1_D3/D2/D1/D0/CMD/CLK`, регистры `0x030010D0/D4/D8/DC/E0/E4`, func0) частично совпадают с падами I2C1/I2C3 header (I2C занимает 4 из них: SD1_D3/D0/CMD/CLK). Любой remux этих регистров на работающем радио отключает чип от шины: `buffer_cnt = -1`, `reg:9 write failed`, `cmd queue crashed`. Pinmux I2C1/I2C3 описан только в board-DTS вариантов B/E (патч 0021), на W/WE узлы i2c1/i2c3 отключены и пады остаются за sdhci1.
-- Чип, прерванный посреди инициализации (оборванная заливка firmware либо тёплый reboot из другого варианта, например E → W), может зависнуть. Наблюдалось два признака. Либо чип вообще не отвечает на SDIO-енумерацию (`mmc1: Failed to initialize a non-removable card`). Либо SDIO-карта энумерируется (`mmc1: new SDIO card`) и `aic8800_bsp` грузится, но следующая фаза power-on таймаутит: `aicbsp_dummy_sdmmc ... probe ... failed with error -110`, затем `aicbsp_set_subsys, fail to set AIC_WIFI power state` и `rwnx_mod_init, set power on fail!`. В обоих случаях `aic8800_fdrv` не биндится, `wlan0` нет, `modprobe aic8800_fdrv` → `No such device` (ENODEV). Тёплый reboot не помогает (питание удерживается), лечится только холодным power cycle (снять питание на 10+ секунд).
+- Чип, прерванный посреди инициализации (оборванная заливка firmware либо тёплый reboot из другого варианта, например E → W), может зависнуть. Наблюдалось два признака. Либо чип вообще не отвечает на SDIO-енумерацию (`mmc1: Failed to initialize a non-removable card`). Либо SDIO-карта энумерируется (`mmc1: new SDIO card`) и `aic8800_bsp` грузится, но следующая фаза power-on таймаутит: `aicbsp_dummy_sdmmc ... probe ... failed with error -110`, затем `aicbsp_set_subsys, fail to set AIC_WIFI power state` и `rwnx_mod_init, set power on fail!`. В обоих случаях `aic8800_fdrv` не биндится, `wlan0` нет, `modprobe aic8800_fdrv` → `No such device` (ENODEV). Раньше тёплый reboot не помогал (питание чипа удерживалось), лечило только снятие питания на 10+ секунд. С фиксом FSBL-осушения (`patches/fsbl/0003`) это снято: FSBL уводит питание AIC8801 (GPIOA26, active-low) в LOW рано на загрузке, чип обесточен весь остаток boot (OpenSBI + U-Boot + ядро до mmc1) и успевает осушить конденсаторы, затем `mmc-pwrseq` поднимает питание при инициализации mmc1, и радио встаёт чисто. Поэтому reboot и переключение вариантов на W/WE больше не требуют снятия питания. hw-verified 2026-07-04.
 - Powersave прошивки чипа выключен через `options aic8800_fdrv ps_on=0` в `/etc/modprobe.d/aic8800.conf` (host-side сон `CONFIG_SDIO_PWRCTRL` выключен ещё сборкой).
 - На 2.4G band максимальная скорость TX около 86 Mbps (HE-MCS 7, 1 stream, 20MHz). На 5G band больше при широких каналах (но не тестировано на mainline 6.18.29).
 - WPA3-SAE работает, проверено с Pixel hotspot в режиме WPA3 Personal.

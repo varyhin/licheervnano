@@ -1,0 +1,41 @@
+Назначение: на этапе FSBL (BL2) обесточить Wi-Fi чип AIC8801 через GPIOA26, чтобы
+он осушился за время загрузки и в Linux встал чисто.
+
+Причина: на LicheeRV Nano W/WE линия GPIOA26 управляет питанием AIC8801
+(active-low, LOW = чип выключен). После reboot чип остаётся под питанием и залипает
+(mmc1 «Failed to initialize a non-removable card»), для восстановления нужен
+многосекундный съём питания, чтобы разрядить конденсаторы. Если сделать этот съём
+питания рано, в FSBL, и оставить GPIOA26 в LOW, чип обесточен весь остаток загрузки
+(OpenSBI, U-Boot, ожидание меню extlinux, ядро до инициализации mmc1). Осушение
+идёт параллельно нормальной загрузке, бесплатно по времени. В Linux драйвер
+mmc-pwrseq-simple поднимает GPIOA26 (включает чип) при инициализации mmc1.
+
+Фикс: в bl2_main() сразу после блока гашения синего LED (patch 0002) и до
+load_rest() мукс пада GPIOA26 в GPIO (fmux 0x0300104C = 0x3), затем drive LOW по
+GPIO0 (DIR bit26 = output, DR bit26 = LOW). Задержка не нужна, осушение
+перекрывается загрузкой. GPIOA26 в FSBL не поднимается обратно, это делает Linux.
+
+FSBL общий для всех вариантов (единый fip.bin). На B/E это неиспользуемый пад
+EMMC_DAT2 (eMMC не распаян ни на одном варианте), drive LOW там безвредный no-op.
+
+Применяется поверх patches/fsbl/0002 (контекст ханка включает блок LED),
+git apply -p1 из src/licheerv-nano-build-vendor.
+
+--- a/fsbl/plat/cv181x/bl2/bl2_main.c
++++ b/fsbl/plat/cv181x/bl2/bl2_main.c
+@@ -95,6 +95,15 @@
+ 	mmio_write_32(0x03020004, mmio_read_32(0x03020004) | (1u << 14));  /* GPIO0 DIR bit14 = output */
+ 	mmio_write_32(0x03020000, mmio_read_32(0x03020000) & ~(1u << 14)); /* GPIO0 DR bit14 = LOW (LED off) */
+ 
++	/* Wi-Fi AIC8801 (W/WE): обесточить рано через GPIOA26 (питание чипа,
++	 * active-low). Чип остаётся выключенным весь остаток загрузки (OpenSBI +
++	 * U-Boot + ядро до mmc1), это осушает конденсаторы, и в Linux mmc-pwrseq
++	 * поднимает питание при инициализации mmc1, чип встаёт чисто. На B/E это
++	 * неиспользуемый пад EMMC_DAT2, безвредно. GPIOA26 pad = fmux 0x0300104C. */
++	mmio_write_32(0x0300104C, 0x3);                                    /* GPIOA26 -> GPIO */
++	mmio_write_32(0x03020004, mmio_read_32(0x03020004) | (1u << 26));  /* GPIO0 DIR bit26 = output */
++	mmio_write_32(0x03020000, mmio_read_32(0x03020000) & ~(1u << 26)); /* GPIO0 DR bit26 = LOW (AIC8801 off) */
++
+ 	load_rest(mode);
+ 	NOTICE("BL2 end.\n");
+ 
