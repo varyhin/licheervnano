@@ -75,6 +75,7 @@ EXTRA_PKGS     := \
   alsa-utils
 
 # patches (порядок применения важен)
+PATCHES_OPENSBI := $(sort $(wildcard $(PROJ)/patches/opensbi/*.patch))
 PATCHES_UBOOT  := $(sort $(wildcard $(PROJ)/patches/uboot/*.patch))
 PATCHES_FSBL   := $(sort $(wildcard $(PROJ)/patches/fsbl/*.patch))
 PATCHES_LINUX  := $(sort $(wildcard $(PROJ)/patches/linux/*.patch))
@@ -149,6 +150,7 @@ refetch:
 # Реальная проверка применимости это make patches-apply на чистом дереве.
 patches-check: fetch-linux
 	@echo "==> patches-check"
+	cd $(SRC_OPENSBI) && git apply --check $(PATCHES_OPENSBI)
 	cd $(SRC_UBOOT)   && git apply --check $(PATCHES_UBOOT)
 	cd $(SRC_FSBL)    && git apply --check $(PATCHES_FSBL)
 	cd $(SRC_LINUX)   && git apply --check $(PATCHES_LINUX)
@@ -161,6 +163,7 @@ patches-check: fetch-linux
 # файлы порта, не входящие в патчи).
 patches-apply: fetch-linux
 	@echo "==> patches-apply"
+	cd $(SRC_OPENSBI) && git apply $(PATCHES_OPENSBI)
 	cd $(SRC_UBOOT)   && git apply $(PATCHES_UBOOT)
 	cd $(SRC_FSBL)    && git apply $(PATCHES_FSBL)
 	cd $(SRC_LINUX)   && git apply $(PATCHES_LINUX)
@@ -171,10 +174,10 @@ patches-apply: fetch-linux
 patches-revert:
 	@echo "==> patches-revert"
 	cd $(PROJ) && git checkout HEAD -- \
-	  src/u-boot src/licheerv-nano-build-vendor src/aic8800-vendor \
+	  src/opensbi src/u-boot src/licheerv-nano-build-vendor src/aic8800-vendor \
 	  src/cvitek-tpu-vendor
 	cd $(PROJ) && git clean -qfdx \
-	  src/u-boot src/licheerv-nano-build-vendor src/aic8800-vendor \
+	  src/opensbi src/u-boot src/licheerv-nano-build-vendor src/aic8800-vendor \
 	  src/cvitek-tpu-vendor
 	@if [ -d $(SRC_LINUX)/.git ]; then \
 	  git -C $(SRC_LINUX) checkout -q -- . && git -C $(SRC_LINUX) clean -qfd; \

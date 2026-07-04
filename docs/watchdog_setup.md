@@ -65,3 +65,8 @@ exec 3>/dev/watchdog0          # взвести и НЕ кормить, НЕ з�
 - `dw_wdt 3010000.watchdog: No valid TOPs array specified` в dmesg это информационное, не ошибка. Мы (как и vendor) не задаём опциональный `snps,watchdog-tops`, драйвер берёт дефолтные TOP. Таймаут считается корректно (клок прочитан), set/get/укус работают.
 - `CONFIG_WATCHDOG_SYSFS=y` включён, sysfs-атрибуты `/sys/class/watchdog/watchdog0/{identity,timeout,state}` доступны (подтверждено на железе 2026-06-09: identity `Synopsys DesignWare Watchdog`, timeout 42, state inactive). Даёт инспекцию без удержания устройства открытым; `wdctl` (ioctl) тоже работает.
 - `interrupts` в узле это pretimeout-линия (опциональна в драйвере). Базовый reset-по-таймауту IRQ не требует.
+
+## Роль в reboot
+
+Этот же DW-watchdog используется как источник аппаратного сброса для `reboot`. Голый его сброс на SG2002 частичный, плата из него не поднимается. Reset-device в OpenSBI (`patches/opensbi/0001`) сначала включает маршрутизацию в домене RTCSYS, и только тогда укус watchdog даёт полный восстанавливаемый сброс. Механизм целиком описан в `docs/reboot_setup.md`.
+

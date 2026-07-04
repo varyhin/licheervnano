@@ -1,0 +1,28 @@
+Назначение: добавить в control-DTB U-Boot корневой узел sysreset с
+compatible "sophgo,cv1800b-sysreset" для платы LicheeRV Nano.
+
+Этот узел решает две задачи:
+- OpenSBI на runtime сопоставляет по нему свой драйвер reset
+  (fdt_reset_cv1800b), беря DT из встроенного u-boot.dtb (FW_FDT_PATH).
+  Без узла SBI SRST остаётся no-op и reboot из Linux не даёт полного сброса.
+- U-Boot биндит собственный уже включённый драйвер SYSRESET_CV1800B, так
+  что команда reset в U-Boot тоже начинает работать.
+
+DTS sg2002-licheerv-nano-b.dts собирается в u-boot.dtb, потому что
+CONFIG_OF_UPSTREAM выключен и dtb-$(CONFIG_TARGET_LICHEERV_NANO) берёт
+именно arch/riscv/dts/sg2002-licheerv-nano-b.dtb.
+
+diff -urN a/arch/riscv/dts/sg2002-licheerv-nano-b.dts b/arch/riscv/dts/sg2002-licheerv-nano-b.dts
+--- a/arch/riscv/dts/sg2002-licheerv-nano-b.dts	2026-07-03 20:03:01.399537652 +0300
++++ b/arch/riscv/dts/sg2002-licheerv-nano-b.dts	2026-07-03 20:02:36.272395809 +0300
+@@ -26,6 +26,10 @@
+ 	chosen {
+ 		stdout-path = "serial0:115200n8";
+ 	};
++
++	sysreset {
++		compatible = "sophgo,cv1800b-sysreset";
++	};
+ };
+ 
+ &osc {
