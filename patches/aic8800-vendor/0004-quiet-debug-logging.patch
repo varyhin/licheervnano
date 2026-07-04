@@ -1,0 +1,103 @@
+Назначение: приглушить многословное отладочное логирование vendor AIC8800
+драйвера, забивающее dmesg и последовательную консоль на каждом кадре Wi-Fi
+и Bluetooth. Применяется поверх 0001-0003.
+
+Состав:
+- aic8800_fdrv/rwnx_main.c
+    Дефолт aicwf_dbg_level понижен с LOGERROR|LOGINFO|LOGDEBUG|LOGTRACE|LOGFW
+    до LOGERROR. Уходит весь поток AICWFDBG(LOGINFO). Параметр остаётся
+    module_param(0660), уровень возвращается в рантайме без пересборки.
+- aic8800_fdrv/aic_btsdio.h
+    AICBT_DBG_FLAG 1 -> 0, макрос AICBT_DBG схлопывается в пустоту.
+- aic8800_fdrv/btsdio.c
+    Пофреймовые трассы AICBT_INFO (tx_packet, work, recv, open, close,
+    flush, send_frame) переведены в AICBT_DBG. Одноразовые btsdio_init,
+    btsdio_remove и все AICBT_ERR/AICBT_WARN не тронуты.
+
+--- a/aic8800_fdrv/rwnx_main.c
++++ b/aic8800_fdrv/rwnx_main.c
+@@ -522,7 +522,7 @@
+ 
+ 
+ extern uint8_t scanning;
+-int aicwf_dbg_level = LOGERROR|LOGINFO|LOGDEBUG|LOGTRACE|LOGFW;
++int aicwf_dbg_level = LOGERROR;
+ module_param(aicwf_dbg_level, int, 0660);
+ int testmode = 0;
+ char aic_fw_path[200];
+--- a/aic8800_fdrv/btsdio.c
++++ b/aic8800_fdrv/btsdio.c
+@@ -86,7 +86,7 @@
+ {
+ 	int err;
+ 
+-	AICBT_INFO("%s", data->hdev->name);
++	AICBT_DBG("%s", data->hdev->name);
+ 
+ 	/* Prepend Type-A header */
+ 	skb_push(skb, 1);
+@@ -112,7 +112,7 @@
+ 	struct sk_buff *skb;
+ 	int err;
+ 
+-	AICBT_INFO("%s,%s", data->hdev->name,__func__);
++	AICBT_DBG("%s,%s", data->hdev->name,__func__);
+ 
+ 
+ 	while ((skb = skb_dequeue(&data->txq))) {
+@@ -159,7 +159,7 @@
+ 		//kfree_skb(skb);
+ 		///return 0;
+ 	//}
+-	AICBT_INFO("skb type %d",type);
++	AICBT_DBG("skb type %d",type);
+ 	//bt_data_dump("bt_skb", skb, skb->len);
+ 	ret = hci_recv_frame(hdev, skb);
+ 	if(ret < 0){
+@@ -175,7 +175,7 @@
+ 	//struct btsdio_data *data = hci_get_drvdata(hdev);
+ 	int err = 0;
+ 
+-	AICBT_INFO("%s", hdev->name);
++	AICBT_DBG("%s", hdev->name);
+ 
+ 	return err;
+ }
+@@ -184,7 +184,7 @@
+ {
+ 	//struct btsdio_data *data = hci_get_drvdata(hdev);
+ 
+-	AICBT_INFO("%s,%s", hdev->name,__func__);
++	AICBT_DBG("%s,%s", hdev->name,__func__);
+ 
+ 	return 0;
+ }
+@@ -193,7 +193,7 @@
+ {
+ 	struct btsdio_data *data = hci_get_drvdata(hdev);
+ 
+-	AICBT_INFO("%s,%s", hdev->name,__func__);
++	AICBT_DBG("%s,%s", hdev->name,__func__);
+ 
+ 	skb_queue_purge(&data->txq);
+ 
+@@ -204,7 +204,7 @@
+ {
+ 	struct btsdio_data *data = hci_get_drvdata(hdev);
+ 
+-	AICBT_INFO("%s,%s", hdev->name,__func__);
++	AICBT_DBG("%s,%s", hdev->name,__func__);
+ 
+ 	switch (hci_skb_pkt_type(skb)) {
+ 	case HCI_COMMAND_PKT:
+--- a/aic8800_fdrv/aic_btsdio.h
++++ b/aic8800_fdrv/aic_btsdio.h
+@@ -31,7 +31,7 @@
+ #define PRINT_ACL_DATA          1
+ #define PRINT_SCO_DATA          1
+ 
+-#define AICBT_DBG_FLAG          1
++#define AICBT_DBG_FLAG          0
+ 
+ #if AICBT_DBG_FLAG
+ #define AICBT_DBG(fmt, arg...) printk( "aic_btsdio: " fmt "\n" , ## arg)

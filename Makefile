@@ -322,13 +322,13 @@ aic8800-install: aic8800
 	cp $(FIRMWARE)/aic8800_u03/* \
 	   $(ROOTFS)/usr/lib/firmware/aic8800_sdio/aic8800_and_aic8800D80/
 	mkdir -p $(ROOTFS)/etc/modprobe.d
-	echo "# AIC8800 fdrv debug level: 3 = LOGERROR(1)|LOGINFO(2)" \
+	echo "# AIC8800 fdrv debug level: 1 = LOGERROR (тихо, без флуда AICWFDBG(LOGINFO))" \
 	  > $(ROOTFS)/etc/modprobe.d/aic8800.conf
-	echo "# (4=LOGTRACE 8=LOGDEBUG 0x400=LOGFW) изменить runtime через" \
+	echo "# (2=LOGINFO 4=LOGTRACE 8=LOGDEBUG 0x400=LOGFW) изменить runtime через" \
 	  >> $(ROOTFS)/etc/modprobe.d/aic8800.conf
 	echo "# echo N > /sys/module/aic8800_fdrv/parameters/aicwf_dbg_level" \
 	  >> $(ROOTFS)/etc/modprobe.d/aic8800.conf
-	echo "options aic8800_fdrv aicwf_dbg_level=3" \
+	echo "options aic8800_fdrv aicwf_dbg_level=1" \
 	  >> $(ROOTFS)/etc/modprobe.d/aic8800.conf
 	@# ps_on=0 отключает powersave прошивки чипа (через me_config).
 	@# С ps_on=1 (дефолт) idle-чип уходит в doze и перестаёт отвечать:
