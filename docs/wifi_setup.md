@@ -46,6 +46,7 @@ network={
 EOF
 chmod 600 /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
 wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant-wlan0.conf -D nl80211
+wpa_cli -i wlan0 reconfigure
 dhclient -v wlan0
 ```
 
