@@ -344,6 +344,11 @@ aic8800-install: aic8800
 	@# Host-side сон (CONFIG_SDIO_PWRCTRL) уже выключен в Makefile vendor.
 	echo "options aic8800_fdrv ps_on=0" \
 	  >> $(ROOTFS)/etc/modprobe.d/aic8800.conf
+	@# Скрипт проверки радио едет в образ: консоль платы рвёт вставку длинных
+	@# блоков (heredoc на 99 строк доезжает усечённым), копипаст ненадёжен.
+	mkdir -p $(ROOTFS)/usr/local/sbin
+	install -m 0755 $(PROJ)/scripts/check-wifi.sh \
+	  $(ROOTFS)/usr/local/sbin/check-wifi.sh
 
 # Форвард-портнутый vendor TPU driver (soph_tpu, cv181x "mars").
 # Узел DT cvitek,tpu в patches/linux/0017. Драйвер требует patches-apply
