@@ -426,6 +426,11 @@ _image_pack:
 	rm -f /tmp/sd-root/var/lib/dbus/machine-id; \
 	rm -f /tmp/sd-root/var/lib/systemd/random-seed; \
 	rm -f /tmp/sd-root/etc/ssh/ssh_host_*; \
+	TSUID=$$(awk -F: '/^systemd-timesync:/{print $$3}' /tmp/sd-root/etc/passwd); \
+	TSGID=$$(awk -F: '/^systemd-timesync:/{print $$3}' /tmp/sd-root/etc/group); \
+	[ -n "$$TSUID" ] && [ -n "$$TSGID" ] || { echo "systemd-timesync uid/gid не найден"; exit 1; }; \
+	install -d -o $$TSUID -g $$TSGID -m 0755 /tmp/sd-root/var/lib/systemd/timesync; \
+	install -o $$TSUID -g $$TSGID -m 0644 /dev/null /tmp/sd-root/var/lib/systemd/timesync/clock; \
 	echo "licheervnano $$(git -C $(PROJ) rev-parse --short HEAD) $$(date -u +%FT%TZ)" > /tmp/sd-root/etc/licheervnano-release; \
 	install -m 644 $(PROJ)/scripts/regenerate-ssh-host-keys.service /tmp/sd-root/etc/systemd/system/; \
 	mkdir -p /tmp/sd-root/etc/systemd/system/multi-user.target.wants; \
@@ -524,6 +529,21 @@ rootfs-packages: _check_debootstrap_host
 	@# Таймкипинг через аппаратный RTC (sophgo,cv1800b-rtc, /dev/rtc0,
 	@# RTC_HCTOSYS) + systemd-timesyncd по NTP. fake-hwclock убран как
 	@# избыточный (RTC держит время через warm-reboot, NTP правит на сети).
+	@# Холодный старт не покрыт ни тем, ни другим: enable-бит RTC в домене
+	@# RTCSYS сбрасывается снятием питания, hctosys падает с 'unable to read
+	@# the hardware clock'. Роль fake-hwclock играет clock-файл timesyncd,
+	@# systemd поднимает по его mtime системное время (только вперёд).
+	@# На свежепрошитом образе файла нет, systemd садится на TIME_EPOCH, то
+	@# есть на дату сборки пакета systemd, и это значение защёлкивается в
+	@# clock-файле на все последующие холодные загрузки. До первой сверки по
+	@# NTP ломаются проверка подписей apt (sqv: 'Not live until ...') и
+	@# валидация TLS. Кладём clock-файл с mtime момента сборки образа.
+	TSUID=$$(awk -F: '/^systemd-timesync:/{print $$3}' $(ROOTFS)/etc/passwd); \
+	TSGID=$$(awk -F: '/^systemd-timesync:/{print $$3}' $(ROOTFS)/etc/group); \
+	[ -n "$$TSUID" ] && [ -n "$$TSGID" ] || { echo "systemd-timesync uid/gid не найден"; exit 1; }; \
+	install -d -o $$TSUID -g $$TSGID -m 0755 $(ROOTFS)/var/lib/systemd/timesync; \
+	install -o $$TSUID -g $$TSGID -m 0644 /dev/null \
+	  $(ROOTFS)/var/lib/systemd/timesync/clock
 	@echo "==> rootfs-packages done (LANG=$(LOCALE))"
 
 rootfs: debootstrap rootfs-packages
