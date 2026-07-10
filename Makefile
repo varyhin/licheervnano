@@ -314,12 +314,19 @@ aic8800-install: aic8800
 	   $(ROOTFS)/lib/modules/$(KERNEL_VER)/extra/aic8800/
 	$(CROSS)strip --strip-debug $(ROOTFS)/lib/modules/$(KERNEL_VER)/extra/aic8800/*.ko
 	depmod -a -b $(ROOTFS) $(KERNEL_VER)
-	@# Прошивка чипа AIC8801 U03 (модуль Sipeed AIC8800D80; комплект u03
-	@# + fmacfw/fmacfwbt + userconfig).
+	@# Прошивка Wi-Fi чипа. На плате W/WE встречаются два разных модуля,
+	@# драйвер различает их по SDIO vid/did в aicwf_sdio_chipmatch:
+	@#   5449:0145 -> AIC8801, комплект aic8800_u03
+	@#   C8A1:0082 -> AIC8800D80 (chip_rev 7, IS_CHIP_ID_H), комплект
+	@#                aic8800d80_u02 (список fw_8800d80_h_u02 в aic_bsp_main.c)
+	@# Кладём оба комплекта в один каталог, имена файлов не пересекаются.
 	@# Путь зашит дефолтом CONFIG_AIC_FW_PATH в aic8800_bsp/Makefile.
-	@# Без этих файлов fdrv падает на request_firmware и wlan0 не создаётся.
+	@# Без этих файлов bsp падает (aicbt_patch_table_alloc fail ->
+	@# set power on fail), fdrv не биндится и wlan0 не создаётся.
+	@# Каждый комплект обязан быть полным, выборка «только файлы из
+	@# таблицы fw_*» недостаточна.
 	mkdir -p $(ROOTFS)/usr/lib/firmware/aic8800_sdio/aic8800_and_aic8800D80
-	cp $(FIRMWARE)/aic8800_u03/* \
+	cp $(FIRMWARE)/aic8800_u03/* $(FIRMWARE)/aic8800d80_u02/* \
 	   $(ROOTFS)/usr/lib/firmware/aic8800_sdio/aic8800_and_aic8800D80/
 	mkdir -p $(ROOTFS)/etc/modprobe.d
 	echo "# AIC8800 fdrv debug level: 1 = LOGERROR (тихо, без флуда AICWFDBG(LOGINFO))" \
