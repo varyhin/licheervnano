@@ -21,7 +21,7 @@ scripts/check-wifi.sh 6778e152     # плюс сверить метку прош
 
 Линейная последовательность для варианта W. Подставь свои значения вместо `ВАШ_SSID` и `ВАШ_ПАРОЛЬ`, реальные креды в доку не пишем. Разбор каждого шага в разделах ниже.
 
-1. Выбрать вариант W в extlinux (если плата ещё не на W) и перезагрузиться. `reboot` работает, Wi-Fi встаёт сам, холодный power cycle больше не нужен:
+Выбрать вариант W в extlinux (если плата ещё не на W) и перезагрузиться. `reboot` работает, Wi-Fi встаёт сам, холодный power cycle больше не нужен:
 
 ```
 mount /dev/mmcblk0p1 /mnt
@@ -32,15 +32,23 @@ umount /mnt
 reboot
 ```
 
-2. Посмотреть эфир:
-
 ```
+cat > /etc/wpa_supplicant/wpa_supplicant-wlan0.conf <<'EOF'
+ctrl_interface=DIR=/run/wpa_supplicant GROUP=root
+update_config=1
+country=RU
+EOF
+
+chmod 600 /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
+wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant-wlan0.conf -D nl80211
+wpa_cli -i wlan0 reconfigure
+
 wpa_cli -i wlan0 scan            # вернёт OK
 sleep 3
 wpa_cli -i wlan0 scan_results    # таблица найденных сетей
 ```
 
-3. Записать конфиг сети (пример WPA2-PSK) и подключиться:
+Записать конфиг сети (пример WPA2-PSK) и подключиться:
 
 ```
 cat > /etc/wpa_supplicant/wpa_supplicant-wlan0.conf <<'EOF'
@@ -55,12 +63,13 @@ network={
 }
 EOF
 chmod 600 /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
-wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant-wlan0.conf -D nl80211
+
 wpa_cli -i wlan0 reconfigure
+
 dhclient -v wlan0
 ```
 
-4. Включить автоконнект на загрузке:
+Включить автоконнект на загрузке:
 
 ```
 cat > /etc/network/interfaces.d/wlan0 <<'EOF'
