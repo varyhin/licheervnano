@@ -21,17 +21,6 @@ scripts/check-wifi.sh 6778e152     # плюс сверить метку прош
 
 Линейная последовательность для варианта W. Подставь свои значения вместо `ВАШ_SSID` и `ВАШ_ПАРОЛЬ`, реальные креды в доку не пишем. Разбор каждого шага в разделах ниже.
 
-Выбрать вариант W в extlinux (если плата ещё не на W) и перезагрузиться. `reboot` работает, Wi-Fi встаёт сам, холодный power cycle больше не нужен:
-
-```
-mount /dev/mmcblk0p1 /mnt
-sed -i 's/^default .*/default nano-w/' /mnt/extlinux/extlinux.conf
-head -3 /mnt/extlinux/extlinux.conf      # проверить строку: default nano-w
-sync
-umount /mnt
-reboot
-```
-
 ```
 cat > /etc/wpa_supplicant/wpa_supplicant-wlan0.conf <<'EOF'
 ctrl_interface=DIR=/run/wpa_supplicant GROUP=root
