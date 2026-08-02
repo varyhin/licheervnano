@@ -1,0 +1,85 @@
+Назначение: вернуть microSD и SDIO на тот такт, который заказывает ядро. В
+mainline-DT узлы SDHCI отдают драйверу sdhci-of-dwcmshc шинный клок под
+именем "core", поэтому базовый такт делителя берётся втрое выше реального и
+все программируемые частоты выходят втрое ниже заказанных.
+
+Драйвер берёт max_clk из клока с именем "core" (dwcmshc_get_max_clock ->
+sdhci_pltfm_clk_get_max_clock в drivers/mmc/host/sdhci-of-dwcmshc.c), причём
+безусловно: у cv18xx стоит квирк SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN, из-за
+которого sdhci_setup_host игнорирует поле базового такта в Capabilities. В
+cv180x.dtsi и cv181x.dtsi под именем "core" стоял clk_axi4_sd0, clk_axi4_sd1
+и clk_axi4_emmc, а это ветки clk_axi4 (fpll/5 = 300 МГц), то есть шинный
+такт. Реальный источник такта карты это clk_sd0, clk_sd1 и clk_emmc
+(fpll/15 = 100 МГц). TRM SG2002 таблица 8.4 задаёт все три как
+fpll/(15)/100M, а clk_axi4_* как ветку clk_axi4.
+
+Замер на железе W 2026-08-02, ядро 6.18.29, scripts/sd-bench.sh.
+
+- clk_sd0 и clk_sd1 по регистрам делителей 100.00 МГц, clk_axi4 300.00 МГц
+- microSD: Clock Control 0x030b, делитель N=3, такт шины 16.67 МГц, при том
+  что ios показывает 50 МГц, отношение ровно 3.00x
+- SDIO Wi-Fi: Clock Control 0x060f, делитель N=6, такт 8.33 МГц против
+  25 МГц в ios, отношение ровно 3.00x
+- последовательное чтение 7.9 МБ/с при потолке 4-битной шины 8.3 МБ/с, то
+  есть упирается в такт, а не в карту
+- Capabilities 0x3f68c832 заявляет базовый такт 200 МГц, что не совпадает ни
+  с одним клоком дерева, отсюда и квирк. Capabilities1 0x08006077, clock
+  multiplier нулевой, значит делитель считается обычной арифметикой
+  sdhci_calc_clk
+
+Отказа перекос не вызывал, потому что на идентификации ядро целится в
+400 кГц, получает 133 кГц, и это всё ещё внутри допустимого окна
+100-400 кГц. В U-Boot тот же по природе перекос был 3.75x, давал 53 кГц и
+ронял инициализацию, см. patches/uboot/0005.
+
+Фикс это порядок клоков в трёх узлах, имена остаются канонические "core" и
+"bus". Драйвер включает оба клока в любом случае (probe вызывает
+clk_prepare_enable и для core, и для bus), поэтому перестановка ничего не
+гейтит и обратима. Старое ядро с новым DTB тоже считает базу правильно.
+
+Ожидаемый эффект: microSD 50 МГц вместо 16.67 (потолок шины 25 МБ/с вместо
+8.3), SDIO 25 МГц вместо 8.33. Потолок 50 МГц это SD High Speed, выше только
+UHS-режимы, а они требуют 1.8 В сигнализации и здесь не трогаются.
+
+Узел eMMC в cv181x.dtsi правится по тому же TRM, но на LicheeRV Nano eMMC не
+разведён, поэтому замером не подтверждён.
+
+diff -urN a/arch/riscv/boot/dts/sophgo/cv180x.dtsi b/arch/riscv/boot/dts/sophgo/cv180x.dtsi
+--- a/arch/riscv/boot/dts/sophgo/cv180x.dtsi	2026-08-02 17:34:58.581380836 +0300
++++ b/arch/riscv/boot/dts/sophgo/cv180x.dtsi	2026-08-02 17:35:22.640579497 +0300
+@@ -388,8 +388,8 @@
+ 			compatible = "sophgo,cv1800b-dwcmshc";
+ 			reg = <0x4310000 0x1000>;
+ 			interrupts = <SOC_PERIPHERAL_IRQ(20) IRQ_TYPE_LEVEL_HIGH>;
+-			clocks = <&clk CLK_AXI4_SD0>,
+-				 <&clk CLK_SD0>;
++			clocks = <&clk CLK_SD0>,
++				 <&clk CLK_AXI4_SD0>;
+ 			clock-names = "core", "bus";
+ 			status = "disabled";
+ 		};
+@@ -398,8 +398,8 @@
+ 			compatible = "sophgo,cv1800b-dwcmshc";
+ 			reg = <0x4320000 0x1000>;
+ 			interrupts = <SOC_PERIPHERAL_IRQ(22) IRQ_TYPE_LEVEL_HIGH>;
+-			clocks = <&clk CLK_AXI4_SD1>,
+-				 <&clk CLK_SD1>;
++			clocks = <&clk CLK_SD1>,
++				 <&clk CLK_AXI4_SD1>;
+ 			clock-names = "core", "bus";
+ 			status = "disabled";
+ 		};
+diff -urN a/arch/riscv/boot/dts/sophgo/cv181x.dtsi b/arch/riscv/boot/dts/sophgo/cv181x.dtsi
+--- a/arch/riscv/boot/dts/sophgo/cv181x.dtsi	2026-08-02 17:34:58.581380836 +0300
++++ b/arch/riscv/boot/dts/sophgo/cv181x.dtsi	2026-08-02 17:35:22.640579497 +0300
+@@ -12,8 +12,8 @@
+ 			compatible = "sophgo,cv1800b-dwcmshc";
+ 			reg = <0x4300000 0x1000>;
+ 			interrupts = <SOC_PERIPHERAL_IRQ(18) IRQ_TYPE_LEVEL_HIGH>;
+-			clocks = <&clk CLK_AXI4_EMMC>,
+-				 <&clk CLK_EMMC>;
++			clocks = <&clk CLK_EMMC>,
++				 <&clk CLK_AXI4_EMMC>;
+ 			clock-names = "core", "bus";
+ 			status = "disabled";
+ 		};

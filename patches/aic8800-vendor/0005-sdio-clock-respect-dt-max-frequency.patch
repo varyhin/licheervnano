@@ -1,0 +1,89 @@
+Назначение: не давать vendor-драйверу задирать такт SDIO выше того, что
+разрешает узел контроллера в DT. Применяется поверх 0001-0004.
+
+Драйвер выставляет такт SDIO в обход mmc-ядра: пишет host->ios.clock и сам
+вызывает host->ops->set_ios(). Ядро при таком пути не участвует, поэтому
+ограничение mmc_host.f_max, которое mmc_of_parse берёт из max-frequency узла,
+просто не применяется. Целевое значение зависит от чипа
+(aic8800_bsp/aic_bsp_driver.h): AIC8801 просит 25 МГц, AIC8800D80 просит
+150 МГц.
+
+До правки базового такта SDHCI (patches/linux/0023) это было незаметно.
+Ядро считало базой clk_axi4 300 МГц вместо реальных clk_sd1 100 МГц, поэтому
+запрос 150 МГц превращался в делитель 2 и фактические 50 МГц. После правки
+базы тот же запрос даёт делитель 1 и фактические 100 МГц, а это вдвое выше
+потолка SDIO High Speed при 3.3 В сигнализации. На LicheeRV Nano W и WE
+шина SDIO разведена именно на 3.3 В (no-1-8-v в узле sdhci1), переключаемого
+питания карты нет, поэтому запас брать неоткуда.
+
+Правка минимальная: целевой такт зажимается по host->f_max в четырёх местах,
+где vendor-код пишет host->ios.clock напрямую (по два в bsp и в fdrv, вторая
+пара под условием на DDR50). Значение f_max это max-frequency узла sdhci1,
+сейчас 25 МГц. Ноль в f_max трактуется как отсутствие ограничения, чтобы
+правка не могла обнулить такт.
+
+Замер на железе W с AIC8800D80 2026-08-02 (scripts/sd-bench.sh): Clock
+Control контроллера 4320000 равен 0x060f, делитель N=6, то есть на момент
+замера действовал запрос 25 МГц, а не 150. Это установившееся состояние
+после того, как ядро само переставило такт с зажимом по f_max. Запрос в
+150 МГц отрабатывает раньше, на загрузке firmware, и именно он после правки
+базы ушёл бы на 100 МГц.
+
+diff -urN a/aic8800_bsp/aicsdio.c b/aic8800_bsp/aicsdio.c
+--- a/aic8800_bsp/aicsdio.c	2026-08-02 17:42:11.126952141 +0300
++++ b/aic8800_bsp/aicsdio.c	2026-08-02 17:42:41.325943994 +0300
+@@ -1740,7 +1740,11 @@
+     udelay(100);
+ #if 1//SDIO CLOCK SETTING
+ 	if (feature.sdio_clock > 0) {
+-		host->ios.clock = feature.sdio_clock;
++		unsigned int clk = feature.sdio_clock;
++
++		if (host->f_max > 0 && clk > host->f_max)
++			clk = host->f_max;
++		host->ios.clock = clk;
+ 		host->ops->set_ios(host, &host->ios);
+ 		sdio_dbg("Set SDIO Clock %d MHz\n", host->ios.clock/1000000);
+ 	}
+@@ -1860,7 +1864,11 @@
+     msleep(1);
+ #if 1//SDIO CLOCK SETTING
+ 	if ((feature.sdio_clock > 0) && (host->ios.timing != MMC_TIMING_UHS_DDR50)) {
+-		host->ios.clock = feature.sdio_clock;
++		unsigned int clk = feature.sdio_clock;
++
++		if (host->f_max > 0 && clk > host->f_max)
++			clk = host->f_max;
++		host->ios.clock = clk;
+ 		host->ops->set_ios(host, &host->ios);
+ 		sdio_dbg("Set SDIO Clock %d MHz\n", host->ios.clock/1000000);
+ 	}
+diff -urN a/aic8800_fdrv/aicwf_sdio.c b/aic8800_fdrv/aicwf_sdio.c
+--- a/aic8800_fdrv/aicwf_sdio.c	2026-08-02 17:42:11.130952007 +0300
++++ b/aic8800_fdrv/aicwf_sdio.c	2026-08-02 17:42:41.329943868 +0300
+@@ -3065,7 +3065,11 @@
+ 
+ #if 1//SDIO CLOCK SETTING
+ 	if (feature.sdio_clock > 0) {
+-		host->ios.clock = feature.sdio_clock;
++		unsigned int clk = feature.sdio_clock;
++
++		if (host->f_max > 0 && clk > host->f_max)
++			clk = host->f_max;
++		host->ios.clock = clk;
+ 		host->ops->set_ios(host, &host->ios);
+ 		AICWFDBG(LOGINFO, "Set SDIO Clock %d MHz\n", host->ios.clock/1000000);
+ 	}
+@@ -3210,7 +3214,11 @@
+     msleep(1);
+ #if 1//SDIO CLOCK SETTING
+ 	if ((feature.sdio_clock > 0) && (host->ios.timing != MMC_TIMING_UHS_DDR50)) {
+-		host->ios.clock = feature.sdio_clock;
++		unsigned int clk = feature.sdio_clock;
++
++		if (host->f_max > 0 && clk > host->f_max)
++			clk = host->f_max;
++		host->ios.clock = clk;
+ 		host->ops->set_ios(host, &host->ios);
+ 		AICWFDBG(LOGINFO, "Set SDIO Clock %d MHz\n", host->ios.clock/1000000);
+ 	}

@@ -437,6 +437,7 @@ _image_pack:
 	install -d -o $$TSUID -g $$TSGID -m 0755 /tmp/sd-root/var/lib/systemd/timesync; \
 	install -o $$TSUID -g $$TSGID -m 0644 /dev/null /tmp/sd-root/var/lib/systemd/timesync/clock; \
 	echo "licheervnano $$(git -C $(PROJ) rev-parse --short HEAD) $$(date -u +%FT%TZ)" > /tmp/sd-root/etc/licheervnano-release; \
+	install -D -m 0755 $(PROJ)/scripts/sd-bench.sh /tmp/sd-root/usr/local/sbin/sd-bench.sh; \
 	install -m 644 $(PROJ)/scripts/regenerate-ssh-host-keys.service /tmp/sd-root/etc/systemd/system/; \
 	mkdir -p /tmp/sd-root/etc/systemd/system/multi-user.target.wants; \
 	ln -sf ../regenerate-ssh-host-keys.service /tmp/sd-root/etc/systemd/system/multi-user.target.wants/regenerate-ssh-host-keys.service; \
