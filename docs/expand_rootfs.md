@@ -46,6 +46,9 @@ p        primary
 2        номер раздела
          START sector = Enter (default 270336, сразу после p1)
          END = Enter (default до конца диска)
+
+Partition #2 contains a ext4 signature. Do you want to remove? N
+w        write changes
 ```
 
 В этой сборке (с layout MBR=0, p1=1MiB-132MiB, p2=132MiB-end) fdisk
@@ -54,33 +57,13 @@ Default через Enter работает корректно.
 
 На вопрос про сигнатуру файловой системы ответьте `N`:
 
-```
-Partition #2 contains a ext4 signature. Do you want to remove? N
-```
-
 Это критично: удаление сигнатуры разрушит существующий ext4 superblock
 и приведёт к потере rootfs.
-
-Сохранить и выйти:
-
-```
-w        write changes
-```
 
 После `w` fdisk обычно предупреждает что таблица меняется на mounted
 устройстве. Это нормально.
 
-### Шаг 4. Перечитать таблицу разделов
-
-```
-partprobe /dev/mmcblk0   # требует пакет parted (в образе нет)
-```
-
-`partprobe` входит в пакет `parted`, которого в образе нет (`apt install
--y parted`). Без него перечитать таблицу можно `partx -u /dev/mmcblk0`
-(util-linux) или просто `reboot`. После перезагрузки таблица актуальна.
-
-### Шаг 5. Расширить файловую систему
+### Шаг 4. Расширить файловую систему
 
 ```
 resize2fs /dev/mmcblk0p2
@@ -88,32 +71,14 @@ resize2fs /dev/mmcblk0p2
 
 ext4 поддерживает online resize, размонтировать root не нужно.
 
-### Шаг 6. Проверка
+### Шаг 5. Проверка
 
 ```
-df -h /
+df -h 
 ```
 
 Хочется увидеть размер близкий к полному размеру SD карты.
 
-## Способ через parted (если установлен)
-
-`parted` НЕ входит в EXTRA_PKGS этой сборки, нужно ставить отдельно:
-
-```
-apt install -y --no-install-recommends parted
-```
-
-Дальше одна строка вместо интерактивного fdisk:
-
-```
-parted -s /dev/mmcblk0 resizepart 2 100%
-resize2fs /dev/mmcblk0p2
-df -h /
-```
-
-`parted resizepart` автоматически сохраняет start sector, не требует
-вводить его руками, и невозможно ошибиться с номером.
 
 ## Если что-то пошло не так
 
