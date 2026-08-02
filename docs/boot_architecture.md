@@ -118,6 +118,7 @@ BootROM (mask ROM SG2002)
 
 ## См. также
 
+- `docs/sdcard_setup.md` это дерево тактов SD0, базовый такт SDHCI в U-Boot и методика снятия регистров контроллера с приглашения
 - `docs/expand_rootfs.md` это расширение rootfs-раздела на полный размер карты
 - `Makefile` таргеты `fip` и `_image_pack` это сборка `fip.bin` и упаковка образа
 - `extlinux/extlinux.conf` это меню вариантов платы B/E/W/WE
