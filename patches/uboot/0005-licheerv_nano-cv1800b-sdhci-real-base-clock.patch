@@ -1,0 +1,272 @@
+Назначение: устранить срыв инициализации microSD в U-Boot, из-за которого
+плата с частью карт не доходит до Linux и падает на приглашение с
+"Card did not respond to voltage select! : -110". Отказ плавающий, повторяется
+на разных картах и не зависит от холодного старта или тёплого сброса.
+
+Причина: драйвер зашивает базовый такт SDHCI как 375 МГц
+(host->max_clk = MMC_MAX_CLOCK), тогда как реальный источник такта карты это
+clk_sd0 = fpll/15 = 100 МГц. Все программируемые частоты выходят заниженными
+в 3.75 раза. На фазе идентификации U-Boot целится в 200 кГц (f_min), считает
+делитель 938 и получает на карте 100 МГц / 1876 = 53.3 кГц. CMD0 ответа не
+имеет, поэтому пропущенный CMD0 хост не замечает: карта остаётся в состоянии,
+в котором её оставил BootROM, и по спецификации обязана игнорировать CMD8,
+ACMD41 и CMD1. Наблюдается это как три таймаута подряд при исправной шине.
+На рабочей скорости тот же перекос давал 12.5 МГц вместо 50 МГц.
+
+Замеры на железе 2026-08-02, всё с приглашения U-Boot через md.l.
+
+- Present State 0x04310024 = 0x03f70000: карта вставлена, состояние стабильно,
+  CMD и DAT[3:0] подтянуты вверх, то есть шина исправна и карта запитана
+- Power Control 0x04310029 = 0x0f: питание шины включено, выбрано 3.3 В
+- Host Control 2 0x0431003e = 0x0080: 1.8V signaling выключен
+- Clock Control 0x0431002c = 0xaac7: internal clock enable и stable,
+  SD clock enable, делитель 938
+- REG_DIV_CLK_SD0 0x03002070 = 0x00000001: сброс делителя снят, бит 3
+  (Select Divide Factor from Register) нулевой, значит действует начальный
+  делитель 15, источник fpll (биты 9:8 нулевые)
+- REG_CLK_BYP_0 0x03002030 = 0: байпаса clk_sd0 на osc нет
+- REG_CLK_EN_0 0x03002000 = 0xffffffff: гейты clk_axi4_sd0 и clk_sd0 открыты
+- REG_FPLL_CSR 0x03002910 = 0x07788101: pre_div 1, post_div 1, div 60,
+  то есть fpll = 25 МГц * 60 = 1500 МГц
+
+TRM SG2002 подтверждает документально: таблица 8.4 задаёт clk_sd0 как
+fpll/(15)/100M, таблица 8.67 (div_clk_sd0, смещение 0x070) описывает бит 3 как
+выбор делителя из регистра и биты 9:8 как источник. clk_axi4_sd0 по той же
+таблице это ветка clk_axi4, то есть шинный такт, а не такт карты.
+
+Фикс, четыре части.
+
+1. host->max_clk берётся из clk-фреймворка по имени "bus" (это CLK_SD0 в узле
+   mmc@4310000), оба такта узла явно включаются, а не наследуются от FSBL.
+   Регистр capability тут не годится: он заявляет 200 МГц, что не совпадает ни
+   с деревом тактов, ни с зашитой константой. Mainline Linux по той же причине
+   держит для этого SoC квирк SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN.
+
+2. База vendor-области вычисляется из регистра 0xe8 (Pointer for Vendor
+   Specific Area), а не зашивается смещением 0x240.
+
+3. Добавлена инициализация PHY и бита LATANCY_1T по образцу
+   cv18xx_sdhci_reset() из drivers/mmc/host/sdhci-of-dwcmshc.c mainline Linux,
+   который на этой же плате устойчиво работает на high speed. SDHCI_RESET_ALL в
+   sdhci_init() стирает vendor-область, а хука reset в U-Boot нет, поэтому
+   запись повешена на set_control_reg, который вызывается первым в
+   sdhci_set_ios(). Побочный эффект: тюнинг, если бы он запускался, терял бы
+   подобранный tap на следующем обновлении ios. Сейчас это недостижимо, U-Boot
+   снимает UHS-режимы на старте, потому что на плате нет переключаемого
+   vmmc/vqmmc и mmc_power_cycle() ничего не делает.
+
+4. Потолок шины задан явно как 50 МГц (SD High Speed), нижняя граница остаётся
+   200 кГц. С правильной базой в 100 МГц это даёт настоящие 200 кГц на
+   идентификации и настоящие 50 МГц на данных.
+
+diff -urN a/drivers/mmc/cv1800b_sdhci.c b/drivers/mmc/cv1800b_sdhci.c
+--- a/drivers/mmc/cv1800b_sdhci.c	2026-08-02 11:13:47.967950839 +0300
++++ b/drivers/mmc/cv1800b_sdhci.c	2026-08-02 11:13:47.971950564 +0300
+@@ -3,25 +3,117 @@
+  * Copyright (c) 2024, Kongyang Liu <seashell11234455@gmail.com>
+  */
+ 
++#include <clk.h>
+ #include <dm.h>
+ #include <mmc.h>
+ #include <sdhci.h>
++#include <dm/device_compat.h>
++#include <linux/bitfield.h>
+ #include <linux/delay.h>
++#include <linux/err.h>
+ 
+-#define SDHCI_PHY_TX_RX_DLY  0x240
+-#define MMC_MAX_CLOCK        375000000
+-#define TUNE_MAX_PHCODE      128
++/*
++ * Pointer for Vendor Specific Area 1 (SDHCI 3.00 host controller spec).
++ * The CV1800B/SG2002 integration keeps its MSHC control and PHY registers
++ * at that offset; the layout matches sdhci-of-dwcmshc.c in Linux.
++ */
++#define SDHCI_P_VENDOR_AREA1		0xe8
++#define VENDOR_AREA1_MASK		GENMASK(11, 0)
+ 
+-#define PHY_TX_SRC_INVERT  BIT(8)
++#define CV1800B_MSHC_CTRL		0x00
++#define  CV1800B_LATANCY_1T		BIT(1)
++#define CV1800B_PHY_TX_RX_DLY		0x40
++#define  CV1800B_PHY_TX_DLY_MSK		GENMASK(6, 0)
++#define  CV1800B_PHY_TX_SRC_MSK		GENMASK(9, 8)
++#define  CV1800B_PHY_TX_SRC_INVERT	0x1
++#define  CV1800B_PHY_RX_DLY_MSK		GENMASK(22, 16)
++#define  CV1800B_PHY_RX_SRC_MSK		GENMASK(25, 24)
++#define  CV1800B_PHY_RX_SRC_INVERT	0x1
++#define CV1800B_PHY_CONFIG		0x4c
++#define  CV1800B_PHY_TX_BPS		BIT(0)
++
++/*
++ * The card clock source (CLK_SD0) is fpll/15 = 100 MHz, so UHS modes are
++ * out of reach; U-Boot also drops them at runtime because the board has no
++ * switchable vmmc/vqmmc regulator and cannot power cycle the card. Cap the
++ * bus at SD High Speed and let the identification phase run at 200 kHz.
++ */
++#define CV1800B_MAX_CLOCK		50000000
++#define CV1800B_MIN_CLOCK		200000
++#define TUNE_MAX_PHCODE			128
+ 
+ struct cv1800b_sdhci_plat {
+ 	struct mmc_config cfg;
+ 	struct mmc mmc;
+ };
+ 
++struct cv1800b_sdhci_priv {
++	struct sdhci_host host;
++	struct clk core_clk;
++	struct clk card_clk;
++	u32 vendor_area1;
++};
++
++static inline struct cv1800b_sdhci_priv *to_cv1800b_priv(struct sdhci_host *host)
++{
++	return container_of(host, struct cv1800b_sdhci_priv, host);
++}
++
++/*
++ * Restore the PHY defaults. SDHCI_RESET_ALL in sdhci_init() wipes the whole
++ * vendor area, so this has to run again on every ios update, which is the
++ * first thing sdhci_set_ios() does. Linux hooks the same writes to its reset
++ * callback; U-Boot has no reset hook, hence set_control_reg.
++ */
++static void cv1800b_sdhci_phy_init(struct sdhci_host *host)
++{
++	struct cv1800b_sdhci_priv *priv = to_cv1800b_priv(host);
++	u32 val;
++
++	val = sdhci_readl(host, priv->vendor_area1 + CV1800B_MSHC_CTRL);
++	val |= CV1800B_LATANCY_1T;
++	sdhci_writel(host, val, priv->vendor_area1 + CV1800B_MSHC_CTRL);
++
++	val = sdhci_readl(host, priv->vendor_area1 + CV1800B_PHY_CONFIG);
++	val |= CV1800B_PHY_TX_BPS;
++	sdhci_writel(host, val, priv->vendor_area1 + CV1800B_PHY_CONFIG);
++
++	val = FIELD_PREP(CV1800B_PHY_TX_DLY_MSK, 0) |
++	      FIELD_PREP(CV1800B_PHY_TX_SRC_MSK, CV1800B_PHY_TX_SRC_INVERT) |
++	      FIELD_PREP(CV1800B_PHY_RX_DLY_MSK, 0) |
++	      FIELD_PREP(CV1800B_PHY_RX_SRC_MSK, CV1800B_PHY_RX_SRC_INVERT);
++	sdhci_writel(host, val, priv->vendor_area1 + CV1800B_PHY_TX_RX_DLY);
++}
++
++static void cv1800b_sdhci_set_control_reg(struct sdhci_host *host)
++{
++	cv1800b_sdhci_phy_init(host);
++}
++
+ static void cv1800b_set_tap_delay(struct sdhci_host *host, u16 tap)
+ {
+-	sdhci_writel(host, PHY_TX_SRC_INVERT | tap << 16, SDHCI_PHY_TX_RX_DLY);
++	struct cv1800b_sdhci_priv *priv = to_cv1800b_priv(host);
++	u16 clk;
++	u32 val;
++
++	clk = sdhci_readw(host, SDHCI_CLOCK_CONTROL);
++	clk &= ~SDHCI_CLOCK_CARD_EN;
++	sdhci_writew(host, clk, SDHCI_CLOCK_CONTROL);
++
++	val = sdhci_readl(host, priv->vendor_area1 + CV1800B_MSHC_CTRL);
++	val &= ~CV1800B_LATANCY_1T;
++	sdhci_writel(host, val, priv->vendor_area1 + CV1800B_MSHC_CTRL);
++
++	val = FIELD_PREP(CV1800B_PHY_TX_DLY_MSK, 0) |
++	      FIELD_PREP(CV1800B_PHY_TX_SRC_MSK, CV1800B_PHY_TX_SRC_INVERT) |
++	      FIELD_PREP(CV1800B_PHY_RX_DLY_MSK, tap);
++	sdhci_writel(host, val, priv->vendor_area1 + CV1800B_PHY_TX_RX_DLY);
++
++	sdhci_writel(host, 0, priv->vendor_area1 + CV1800B_PHY_CONFIG);
++
++	clk |= SDHCI_CLOCK_CARD_EN;
++	sdhci_writew(host, clk, SDHCI_CLOCK_CONTROL);
++	udelay(1000);
+ }
+ 
+ static void cv1800b_sdhci_reset(struct sdhci_host *host, u8 mask)
+@@ -65,6 +157,7 @@
+ #endif
+ 
+ const struct sdhci_ops cv1800b_sdhci_sd_ops = {
++	.set_control_reg = cv1800b_sdhci_set_control_reg,
+ #if CONFIG_IS_ENABLED(MMC_SUPPORTS_TUNING)
+ 	.platform_execute_tuning = cv1800b_execute_tuning,
+ #endif
+@@ -81,7 +174,9 @@
+ {
+ 	struct mmc_uclass_priv *upriv = dev_get_uclass_priv(dev);
+ 	struct cv1800b_sdhci_plat *plat = dev_get_plat(dev);
+-	struct sdhci_host *host = dev_get_priv(dev);
++	struct cv1800b_sdhci_priv *priv = dev_get_priv(dev);
++	struct sdhci_host *host = &priv->host;
++	ulong rate;
+ 	int ret;
+ 
+ 	host->name = dev->name;
+@@ -92,13 +187,54 @@
+ 	host->mmc->priv = host;
+ 	host->mmc->dev = dev;
+ 	host->ops = &cv1800b_sdhci_sd_ops;
+-	host->max_clk = MMC_MAX_CLOCK;
++
++	ret = clk_get_by_name(dev, "core", &priv->core_clk);
++	if (ret) {
++		dev_err(dev, "cannot get core clock: %d\n", ret);
++		return ret;
++	}
++
++	ret = clk_enable(&priv->core_clk);
++	if (ret && ret != -ENOSYS) {
++		dev_err(dev, "cannot enable core clock: %d\n", ret);
++		return ret;
++	}
++
++	ret = clk_get_by_name(dev, "bus", &priv->card_clk);
++	if (ret) {
++		dev_err(dev, "cannot get card clock: %d\n", ret);
++		return ret;
++	}
++
++	ret = clk_enable(&priv->card_clk);
++	if (ret && ret != -ENOSYS) {
++		dev_err(dev, "cannot enable card clock: %d\n", ret);
++		return ret;
++	}
++
++	/*
++	 * Base clock for the SDHCI divider. It has to come from the clock
++	 * tree: the capability register advertises a value that does not
++	 * match the SoC, and a hardcoded guess makes every programmed
++	 * frequency wrong by the same factor, including the identification
++	 * clock, where cards then stop answering CMD0.
++	 */
++	rate = clk_get_rate(&priv->card_clk);
++	if (!rate || IS_ERR_VALUE(rate)) {
++		dev_err(dev, "cannot get card clock rate\n");
++		return -EINVAL;
++	}
++	host->max_clk = rate;
++
++	priv->vendor_area1 = sdhci_readl(host, SDHCI_P_VENDOR_AREA1) &
++			     VENDOR_AREA1_MASK;
+ 
+ 	ret = mmc_of_parse(dev, &plat->cfg);
+ 	if (ret)
+ 		return ret;
+ 
+-	ret = sdhci_setup_cfg(&plat->cfg, host, 0, 200000);
++	ret = sdhci_setup_cfg(&plat->cfg, host, CV1800B_MAX_CLOCK,
++			      CV1800B_MIN_CLOCK);
+ 	if (ret)
+ 		return ret;
+ 
+@@ -116,7 +252,7 @@
+ 	.of_match = cv1800b_sdhci_match,
+ 	.bind = cv1800b_sdhci_bind,
+ 	.probe = cv1800b_sdhci_probe,
+-	.priv_auto = sizeof(struct sdhci_host),
++	.priv_auto = sizeof(struct cv1800b_sdhci_priv),
+ 	.plat_auto = sizeof(struct cv1800b_sdhci_plat),
+ 	.ops = &sdhci_ops,
+ };
