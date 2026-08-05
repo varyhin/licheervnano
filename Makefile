@@ -43,8 +43,13 @@ BUILD_FSBL    := $(BUILD)/fsbl
 BUILD_LINUX   := $(BUILD)/linux
 
 # Версия каталога модулей = KERNELRELEASE, который modules_install берёт
-# из этого файла после сборки ядра. Ленивое =, на чистом дереве файла
-# ещё нет; не использовать до цели kernel (иначе пусто, см. guard в рецептах).
+# из этого файла после сборки ядра. Ленивое = не даёт отложить чтение до
+# нужной команды, потому что GNU make раскрывает рецепт целиком перед его
+# выполнением. Внутри цели kernel, которая сама и создаёт этот файл,
+# значение поэтому либо пустое (чистое дерево после make clean), либо
+# осталось от предыдущей сборки, и версия там читается runtime через
+# $$(cat ...). В целях aic8800-install и soph_tpu-install значение
+# корректно, их вызывает отдельный под-make уже после kernel.
 KERNEL_VER = $(shell cat $(BUILD_LINUX)/include/config/kernel.release 2>/dev/null)
 
 # Debian suite задаёт и путь ROOTFS, и параметр debootstrap ниже.
@@ -265,8 +270,10 @@ kernel: fetch-linux
 	  --enable DMABUF_HEAPS --enable DMABUF_HEAPS_SYSTEM --enable DMABUF_HEAPS_CMA
 	$(KMAKE) -C $(SRC_LINUX) O=$(BUILD_LINUX) LOCALVERSION= olddefconfig
 	$(KMAKE) -C $(SRC_LINUX) O=$(BUILD_LINUX) LOCALVERSION= $(JOBS) Image dtbs modules
-	@test -n "$(KERNEL_VER)" || { echo "ERROR: KERNEL_VER пуст, ядро не собрано"; exit 1; }
-	rm -rf $(ROOTFS)/lib/modules/$(KERNEL_VER)
+	@KV=$$(cat $(BUILD_LINUX)/include/config/kernel.release 2>/dev/null); \
+	 test -n "$$KV" \
+	   || { echo "ERROR: kernel.release пуст, ядро не собрано"; exit 1; }; \
+	 rm -rf $(ROOTFS)/lib/modules/$$KV
 	$(KMAKE) -C $(SRC_LINUX) O=$(BUILD_LINUX) \
 	  INSTALL_MOD_PATH=$(ROOTFS) INSTALL_MOD_STRIP=1 modules_install
 
