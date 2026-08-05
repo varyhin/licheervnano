@@ -498,6 +498,14 @@ debootstrap: _check_debootstrap_host
 	chroot $(ROOTFS) ln -sf /usr/share/zoneinfo/$(TIMEZONE) /etc/localtime
 	chroot $(ROOTFS) ln -sf /lib/systemd/system/serial-getty@.service \
 	  /etc/systemd/system/getty.target.wants/serial-getty@ttyS0.service
+	@# debootstrap оставляет цель по умолчанию graphical.target (симлинк
+	@# default.target в /usr/lib). Профиль платы headless, поэтому цель
+	@# фиксируется явно. Сейчас разницы в загрузке нет (graphical.target
+	@# требует multi-user.target, а display-manager в rootfs отсутствует),
+	@# но любой пакет с юнитом WantedBy=graphical.target попал бы в загрузку
+	@# молча.
+	chroot $(ROOTFS) ln -sf /lib/systemd/system/multi-user.target \
+	  /etc/systemd/system/default.target
 	mkdir -p $(ROOTFS)/etc/network/interfaces.d
 	printf 'auto lo\niface lo inet loopback\n' \
 	  > $(ROOTFS)/etc/network/interfaces.d/lo
