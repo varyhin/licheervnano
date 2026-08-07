@@ -20,7 +20,11 @@ AIC8800D80 无线固件。
 
 - `make refetch COMP=u-boot SOURCE=upstream` 从官方仓库按固定 SHA
   重新下载源码树并覆盖 `src/u-boot`
-- 之后 `git status` 为空即证明快照与上游完全一致（零成本漂移检查）
+- 之后 `git status --short --ignored -- src/u-boot` 为空即证明快照与上游
+  完全一致（零成本漂移检查）
+
+`--ignored` 标志是必需的。快照内嵌套的 `.gitignore` 会隐藏上游确实纳入
+git 管理的文件（u-boot 中有 235 个），不加该标志就看不到这些文件的漂移。
 
 内核不保存在仓库中，`make fetch-linux` 从 kernel.org 克隆 `v6.18.29`
 并校验 SHA。rootfs 使用 debootstrap 从 deb.debian.org 构建。
@@ -60,8 +64,8 @@ make image         # 完整构建：补丁、u-boot、opensbi、fsbl、内核、
 `dd if=images/licheervnano.img of=/dev/sdX bs=4M conv=fsync`。
 
 控制台为 UART0，115200 8N1。板型在启动时通过 U-Boot 的 extlinux 菜单
-选择（默认 E，超时数秒）。登录用户 root，密码 sipeed（可用
-`ROOT_PASSWORD` 变量修改）。
+选择（默认 W，超时 10 秒，在 `extlinux/extlinux.conf` 中设置）。登录
+用户 root，密码 sipeed（可用 `ROOT_PASSWORD` 变量修改）。
 
 单独执行各步骤请参考 `make help`。
 
@@ -75,22 +79,34 @@ make image         # 完整构建：补丁、u-boot、opensbi、fsbl、内核、
 | `overlay/` | 构建时覆盖到快照上的新增文件 |
 | `firmware/` | vendor blob 和自编译 FSBL（见 NOTICE.md） |
 | `extlinux/` | 四种板型的启动菜单 |
-| `scripts/` | refetch、usb-gadget、SSH 密钥处理 |
+| `scripts/` | refetch、usb-gadget、SSH 密钥处理、Wi-Fi 检查与 SD 性能测量 |
 | `docs/` | 外设和构建指南 |
 | `build/`、`rootfs/`、`images/` | 派生产物，已在 .gitignore 中 |
 
 ## 补丁与 overlay
 
-`src/` 中的快照始终保持纯净。本地修改只存在于 `patches/`（对上游文件
-的真实修改，严格使用 `diff -u` 格式，不含 index 行）和 `overlay/`
-（新增文件）中。`make patches-apply` 将其应用到工作树，
+`src/` 中的快照在提交里始终保持纯净。本地修改只存在于 `patches/`
+（严格使用 `diff -u` 格式，不含 index 行）和 `overlay/`（原样覆盖到
+源码树上的文件）中。`make patches-apply` 将其应用到工作树，
 `make patches-revert` 恢复纯净状态。应用结果用 `git status` 验证而非
 退出码：在这种布局下 `git apply` 会静默跳过带 blob index 行的
 `git diff` 格式补丁。
 
+补丁同样可以创建新文件，这属于正常情况（例如 `patches/opensbi/0001`
+创建 `fdt_reset_cv1800b.c`，`patches/linux/0009` 创建
+`sound/soc/sophgo/`）。`overlay/` 用于那些以独立文件维护比以 diff
+维护更方便的新增文件，目前只有 `overlay/cvitek-tpu-vendor/`。补丁和
+overlay 创建的文件由 `make patches-revert` 清除（对快照目录执行
+`git clean`），因此 `patches-apply` 之后它们在工作树中显示为未跟踪
+文件。不要把它们提交进快照。
+
 `make patches-check` 在先创建后修改的补丁链上会误报失败（补丁 0001
 创建板级 DTS，后续补丁再修改它们）。真正的检查方式是在干净树上执行
 `make patches-apply`。
+
+`patches/linux/` 的编号在 0006 和 0014 处有缺口。这两个补丁在硬件上被
+证伪后被有意删除（0006 设置了错误的 USER LED 极性，0014 在 ADC 中编程
+CTUNE）。其余编号没有重排，以免破坏 docs 中的引用。
 
 ## 更新组件版本
 
@@ -115,11 +131,25 @@ make image         # 完整构建：补丁、u-boot、opensbi、fsbl、内核、
 | 看门狗 | 可用 | [docs/watchdog_setup.md](docs/watchdog_setup.md) |
 | 温度传感器 | 可用 | [docs/thermal_setup.md](docs/thermal_setup.md) |
 | LED、触发器 | 可用 | [docs/led_setup.md](docs/led_setup.md) |
-| I2C、ADC | 可用 | [docs/i2c_setup.md](docs/i2c_setup.md)、[docs/adc_setup.md](docs/adc_setup.md) |
+| I2C | 可用 | [docs/i2c_setup.md](docs/i2c_setup.md) |
+| ADC | 通路可用，量程未标定 | [docs/adc_setup.md](docs/adc_setup.md) |
+| microSD、SDIO | 可用，运行在满速时钟 | [docs/sdcard_setup.md](docs/sdcard_setup.md) |
+| reboot 与 poweroff | 可用 | [docs/reboot_setup.md](docs/reboot_setup.md) |
 | SG2002 引脚映射 | 参考资料 | [docs/sg2002_pin_map.md](docs/sg2002_pin_map.md) |
 
 显示（MIPI DSI）、摄像头（ISP）和视频编解码器（VPU）在主线栈中暂不
 支持，这些属于闭源或工作量很大的 vendor 模块。
+
+## 其他文档
+
+| 文档 | 内容 |
+|---|---|
+| [docs/boot_architecture.md](docs/boot_architecture.md) | 启动链、SD 分区布局、BootROM 要求 `fip.bin` 位于 FAT 的限制 |
+| [docs/expand_rootfs.md](docs/expand_rootfs.md) | 烧录后把 rootfs 扩展到整张卡 |
+| [docs/board_layout.md](docs/board_layout.md) | 板上元件布局，带标注的照片 |
+| [docs/sipeed_resources.md](docs/sipeed_resources.md) | Sipeed 官方资源与原理图分析 |
+| [docs/audio_capture_hw_test.md](docs/audio_capture_hw_test.md) | 按 gain 档位进行录音硬件测试的方法 |
+| [docs/datasheets/README.md](docs/datasheets/README.md) | TRM 与板级原理图，附 SHA256 清单 |
 
 ## TPU
 

@@ -4,10 +4,14 @@
 # подставляет Makefile из manifest/sources.mk:
 #   refetch.sh <comp> <url> <pin> <exclude> [subpath...]
 #
-# После перекачки проверка это git status по src/<comp>. Пустой вывод
-# означает, что снапшот в репозитории идентичен дереву upstream на пине
-# (нет дрейфа). Непустой вывод это либо намеренное обновление пина, либо
-# повод разбираться.
+# После перекачки проверка это git status --short --ignored по src/<comp>.
+# Пустой вывод означает, что снапшот в репозитории идентичен дереву upstream
+# на пине (нет дрейфа). Непустой вывод это либо намеренное обновление пина,
+# либо повод разбираться.
+#
+# Флаг --ignored обязателен: вложенные .gitignore снапшотов прячут файлы,
+# которые upstream хранит в git (у u-boot таких 235). Без флага дрейф по
+# таким файлам невидим. То же требование записано в manifest/sources.mk.
 set -euo pipefail
 
 comp=$1; url=$2; pin=$3; exclude=$4; shift 4
@@ -52,4 +56,4 @@ if [ -n "$exclude" ]; then
 fi
 
 echo "src/$comp перекачан из $url @ $pin"
-echo "проверка дрейфа: git status --short -- src/$comp (пусто = идентичен upstream)"
+echo "проверка дрейфа: git status --short --ignored -- src/$comp (пусто = идентичен upstream)"

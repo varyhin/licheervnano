@@ -21,8 +21,12 @@ FSBL → OpenSBI → U-Boot → Linux 6.18 → Debian 13 и поддержкой
 
 - `make refetch COMP=u-boot SOURCE=upstream` перекачивает дерево пина из
   официального репозитория поверх `src/u-boot`
-- пустой `git status` после перекачки доказывает, что снапшот идентичен
-  upstream (проверка дрейфа бесплатно)
+- пустой `git status --short --ignored -- src/u-boot` после перекачки
+  доказывает, что снапшот идентичен upstream (проверка дрейфа бесплатно)
+
+Флаг `--ignored` обязателен. Вложенные `.gitignore` снапшотов прячут файлы,
+которые upstream хранит в git (у u-boot таких 235), и без флага дрейф по
+ним невидим.
 
 Ядро в репозитории не хранится, `make fetch-linux` клонирует
 `v6.18.29` с kernel.org и сверяет SHA с пином. Rootfs собирается
@@ -63,8 +67,9 @@ make image         # полная сборка: патчи, u-boot, opensbi, fsb
 `dd if=images/licheervnano.img of=/dev/sdX bs=4M conv=fsync`.
 
 Консоль: UART0, 115200 8N1. Вариант платы выбирается в extlinux-меню
-U-Boot при загрузке (по умолчанию E, таймаут несколько секунд).
-Логин root, пароль sipeed (меняется переменной `ROOT_PASSWORD`).
+U-Boot при загрузке (по умолчанию W, таймаут 10 секунд, задаётся в
+`extlinux/extlinux.conf`). Логин root, пароль sipeed (меняется
+переменной `ROOT_PASSWORD`).
 
 Отдельные шаги: `make help`.
 
@@ -78,23 +83,37 @@ U-Boot при загрузке (по умолчанию E, таймаут нес
 | `overlay/` | новые файлы, копируемые поверх снапшотов при сборке |
 | `firmware/` | vendor-блобы + самосборный FSBL (см. NOTICE.md) |
 | `extlinux/` | меню загрузки четырёх вариантов платы |
-| `scripts/` | refetch, usb-gadget, гигиена SSH-ключей |
+| `scripts/` | refetch, usb-gadget, гигиена SSH-ключей, проверка Wi-Fi и замеры SD |
 | `docs/` | руководства по периферии и сборке |
 | `build/`, `rootfs/`, `images/` | derived-артефакты, в .gitignore |
 
 ## Патчи и overlay
 
-Снапшоты в `src/` всегда чистые. Локальные изменения живут только в
-`patches/` (истинные модификации upstream-файлов, строго формат
-`diff -u`, без строк index) и `overlay/` (новые файлы). `make
+Снапшоты в `src/` всегда чистые в коммитах. Локальные изменения живут
+только в `patches/` (строго формат `diff -u`, без строк index) и
+`overlay/` (файлы, копируемые поверх дерева как есть). `make
 patches-apply` накладывает их на рабочее дерево, `make patches-revert`
 возвращает чистое состояние. Применение проверяется по `git status`,
 а не по коду возврата: `git apply` молча пропускает патчи формата
 `git diff` с blob-index в этой раскладке.
 
+Патч тоже может создавать новые файлы, это штатный случай (например
+`patches/opensbi/0001` создаёт `fdt_reset_cv1800b.c`, `patches/linux/0009`
+создаёт `sound/soc/sophgo/`). `overlay/` нужен там, где новый файл
+удобнее вести отдельным файлом, а не диффом, сейчас это только
+`overlay/cvitek-tpu-vendor/`. Созданные патчами и overlay файлы убирает
+`make patches-revert` (`git clean` по каталогам снапшотов), поэтому в
+рабочем дереве после `patches-apply` они видны как неотслеживаемые. Не
+коммитить их в снапшот.
+
 `make patches-check` ложно падает на цепочке create-затем-modify
 (патч 0001 создаёт board-DTS, поздние патчи их меняют). Реальная
 проверка это `make patches-apply` на чистом дереве.
+
+В нумерации `patches/linux/` есть пропуски 0006 и 0014, оба патча
+удалены осознанно после опровержения на железе (0006 задавал неверную
+полярность USER LED, 0014 программировал CTUNE в ADC). Нумерация
+оставшихся не сдвигалась, чтобы не ломать ссылки в docs.
 
 ## Обновление версии компонента
 
@@ -119,11 +138,25 @@ patches-apply` накладывает их на рабочее дерево, `ma
 | Watchdog | работает | [docs/watchdog_setup.md](docs/watchdog_setup.md) |
 | Термосенсор | работает | [docs/thermal_setup.md](docs/thermal_setup.md) |
 | LED, триггеры | работает | [docs/led_setup.md](docs/led_setup.md) |
-| I2C, ADC | работает | [docs/i2c_setup.md](docs/i2c_setup.md), [docs/adc_setup.md](docs/adc_setup.md) |
+| I2C | работает | [docs/i2c_setup.md](docs/i2c_setup.md) |
+| ADC | тракт работает, шкала не калибрована | [docs/adc_setup.md](docs/adc_setup.md) |
+| microSD, SDIO | работает на полном такте | [docs/sdcard_setup.md](docs/sdcard_setup.md) |
+| reboot и poweroff | работает | [docs/reboot_setup.md](docs/reboot_setup.md) |
 | Карта пинов SG2002 | справочник | [docs/sg2002_pin_map.md](docs/sg2002_pin_map.md) |
 
 Дисплей (MIPI DSI), камера (ISP) и видеокодек (VPU) в mainline-стеке
 пока не поддержаны, это закрытые или тяжёлые vendor-блоки.
+
+## Остальная документация
+
+| Документ | О чём |
+|---|---|
+| [docs/boot_architecture.md](docs/boot_architecture.md) | цепочка загрузки, раскладка SD, ограничение BootROM на FAT под `fip.bin` |
+| [docs/expand_rootfs.md](docs/expand_rootfs.md) | расширение rootfs на полный размер карты после прошивки |
+| [docs/board_layout.md](docs/board_layout.md) | размещение компонентов на плате, размеченные фото |
+| [docs/sipeed_resources.md](docs/sipeed_resources.md) | официальные ресурсы Sipeed и разбор схемы |
+| [docs/audio_capture_hw_test.md](docs/audio_capture_hw_test.md) | методика аппаратного теста записи по ступеням gain |
+| [docs/datasheets/README.md](docs/datasheets/README.md) | TRM и схемы платы с манифестом SHA256 |
 
 ## TPU
 

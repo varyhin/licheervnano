@@ -23,8 +23,12 @@ always be switched:
 
 - `make refetch COMP=u-boot SOURCE=upstream` re-downloads the pinned
   tree from the official repository over `src/u-boot`
-- an empty `git status` afterwards proves the snapshot is identical to
-  upstream (a free drift check)
+- an empty `git status --short --ignored -- src/u-boot` afterwards proves
+  the snapshot is identical to upstream (a free drift check)
+
+The `--ignored` flag is mandatory. Nested `.gitignore` files inside the
+snapshots hide files that upstream does keep in git (235 of them in
+u-boot), so without the flag drift in those files is invisible.
 
 The kernel is not stored in the repository. `make fetch-linux` clones
 `v6.18.29` from kernel.org and verifies the SHA against the pin. The
@@ -66,8 +70,9 @@ Flashing: balenaEtcher accepts `.img.gz` directly, or use
 `dd if=images/licheervnano.img of=/dev/sdX bs=4M conv=fsync`.
 
 Console: UART0, 115200 8N1. The board variant is selected in the U-Boot
-extlinux menu at boot (default E, a few seconds timeout). Login root,
-password sipeed (override with the `ROOT_PASSWORD` variable).
+extlinux menu at boot (default W, 10 second timeout, set in
+`extlinux/extlinux.conf`). Login root, password sipeed (override with the
+`ROOT_PASSWORD` variable).
 
 Individual steps: `make help`.
 
@@ -81,23 +86,37 @@ Individual steps: `make help`.
 | `overlay/` | new files copied over the snapshots at build time |
 | `firmware/` | vendor blobs + self-built FSBL (see NOTICE.md) |
 | `extlinux/` | boot menu for the four board variants |
-| `scripts/` | refetch, usb-gadget, SSH key hygiene |
+| `scripts/` | refetch, usb-gadget, SSH key hygiene, Wi-Fi check and SD benchmarks |
 | `docs/` | peripheral and build guides |
 | `build/`, `rootfs/`, `images/` | derived artifacts, gitignored |
 
 ## Patches and overlay
 
-Snapshots in `src/` always stay pristine. Local changes live only in
-`patches/` (true modifications of upstream files, strictly `diff -u`
-format, no index lines) and `overlay/` (new files). `make patches-apply`
+Snapshots in `src/` always stay pristine in commits. Local changes live
+only in `patches/` (strictly `diff -u` format, no index lines) and
+`overlay/` (files copied over the tree verbatim). `make patches-apply`
 applies them to the working tree, `make patches-revert` restores the
 pristine state. Application is verified with `git status`, not the exit
 code: `git apply` silently skips `git diff` formatted patches with blob
 index lines in this layout.
 
+A patch may create new files too, that is a normal case (for example
+`patches/opensbi/0001` creates `fdt_reset_cv1800b.c`, `patches/linux/0009`
+creates `sound/soc/sophgo/`). `overlay/` is for new files that are easier
+to keep as plain files than as diffs, currently only
+`overlay/cvitek-tpu-vendor/`. Files created by patches and overlay are
+removed by `make patches-revert` (`git clean` over the snapshot
+directories), so after `patches-apply` they show up untracked in the
+working tree. Do not commit them into a snapshot.
+
 `make patches-check` falsely fails on the create-then-modify chain
 (patch 0001 creates the board DTS files, later patches modify them).
 The real check is `make patches-apply` on a clean tree.
+
+The `patches/linux/` numbering has gaps at 0006 and 0014. Both patches
+were removed deliberately after being disproved on hardware (0006 set the
+wrong USER LED polarity, 0014 programmed CTUNE in the ADC). The remaining
+numbers were not renumbered, so that references in docs keep working.
 
 ## Updating a component version
 
@@ -122,11 +141,25 @@ Status on the WE variant, everything listed is verified on the board.
 | Watchdog | working | [docs/watchdog_setup.md](docs/watchdog_setup.md) |
 | Thermal sensor | working | [docs/thermal_setup.md](docs/thermal_setup.md) |
 | LEDs, triggers | working | [docs/led_setup.md](docs/led_setup.md) |
-| I2C, ADC | working | [docs/i2c_setup.md](docs/i2c_setup.md), [docs/adc_setup.md](docs/adc_setup.md) |
+| I2C | working | [docs/i2c_setup.md](docs/i2c_setup.md) |
+| ADC | path works, scale not calibrated | [docs/adc_setup.md](docs/adc_setup.md) |
+| microSD, SDIO | working at full clock | [docs/sdcard_setup.md](docs/sdcard_setup.md) |
+| reboot and poweroff | working | [docs/reboot_setup.md](docs/reboot_setup.md) |
 | SG2002 pin map | reference | [docs/sg2002_pin_map.md](docs/sg2002_pin_map.md) |
 
 Display (MIPI DSI), camera (ISP) and the video codec (VPU) are not yet
 supported in the mainline stack; these are closed or heavy vendor blocks.
+
+## Other documentation
+
+| Document | About |
+|---|---|
+| [docs/boot_architecture.md](docs/boot_architecture.md) | boot chain, SD layout, the BootROM constraint that `fip.bin` must live on FAT |
+| [docs/expand_rootfs.md](docs/expand_rootfs.md) | growing the rootfs to the full card size after flashing |
+| [docs/board_layout.md](docs/board_layout.md) | component placement on the board, annotated photos |
+| [docs/sipeed_resources.md](docs/sipeed_resources.md) | official Sipeed resources and schematic analysis |
+| [docs/audio_capture_hw_test.md](docs/audio_capture_hw_test.md) | hardware capture test methodology across gain steps |
+| [docs/datasheets/README.md](docs/datasheets/README.md) | TRM and board schematics with a SHA256 manifest |
 
 ## TPU
 

@@ -95,7 +95,8 @@ umount /mnt
 
 ## Что должно быть до начала
 
-- Boot варианта W из extlinux меню (пункт 4, `label nano-w`, «LicheeRV Nano-W»)
+- Boot варианта W из extlinux меню (пункт 3, `label nano-w`, «LicheeRV Nano-W»,
+  он же дефолт в `extlinux/extlinux.conf`)
 - Модули загружены автоматически через udev (по SDIO-модалиасу чипа, `5449:0145` для AIC8801 либо `C8A1:0082` для AIC8800D80):
 
 ```
@@ -279,14 +280,14 @@ wpa_cli -i wlan0 status
 
 Что хочется увидеть в выводе:
 
-- `wpa_state=COMPLETED` — auth + 4-way handshake прошли
+- `wpa_state=COMPLETED` это auth + 4-way handshake прошли
 - `ssid=ИМЯ_СЕТИ`
 - `bssid=xx:xx:xx:xx:xx:xx`
 - `key_mgmt=WPA-PSK` или `SAE`
 - `pairwise_cipher=CCMP`
 - `wifi_generation=6` для WiFi 6 точек (Wi-Fi 5 покажет `5`, Wi-Fi 4 не показывает)
 
-Если `wpa_state` застрял на `SCANNING` — попробовать `wpa_cli -i wlan0 reconnect`. Если на `ASSOCIATING` или `4WAY_HANDSHAKE` — проверить пароль и `key_mgmt`.
+Если `wpa_state` застрял на `SCANNING`, попробовать `wpa_cli -i wlan0 reconnect`. Если на `ASSOCIATING` или `4WAY_HANDSHAKE`, проверить пароль и `key_mgmt`.
 
 ## Получить IP по DHCP
 
@@ -384,18 +385,18 @@ EOF
 
 Если что-то не работает, в порядке вероятности:
 
-1. `wpa_cli -i wlan0 status` — текущее состояние
-2. `wpa_cli -i wlan0 list_networks` — что supplicant видит в конфиге
-3. `iw dev wlan0 scan | grep -B1 -A6 ИМЯ_СЕТИ` — видит ли чип точку в эфире
-4. `dmesg | grep -iE "sm_connect|assoc|auth|sae" | tail -20` — что говорит driver
-5. `iw dev wlan0 link` — детали ассоциации, signal strength, bitrate
+1. `wpa_cli -i wlan0 status` это текущее состояние
+2. `wpa_cli -i wlan0 list_networks` это что supplicant видит в конфиге
+3. `iw dev wlan0 scan | grep -B1 -A6 ИМЯ_СЕТИ` это видит ли чип точку в эфире
+4. `dmesg | grep -iE "sm_connect|assoc|auth|sae" | tail -20` это что говорит driver
+5. `iw dev wlan0 link` это детали ассоциации, signal strength, bitrate
 
 Типичные ошибки:
 
 - `wpa_state=SCANNING` не меняется → `wpa_cli select_network N`
 - `4WAY_HANDSHAKE`, потом disconnect → неверный пароль или `key_mgmt`
 - `ASSOCIATING`, потом disconnect → точка отказала (PMF mismatch, MAC filter)
-- `Temporary failure in name resolution` при ping — нет DNS, `cat /etc/resolv.conf`
+- `Temporary failure in name resolution` при ping это нет DNS, смотреть `cat /etc/resolv.conf`
 
 ## Известные особенности AIC8800 на LicheeRV Nano W
 
