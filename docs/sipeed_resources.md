@@ -73,7 +73,7 @@ R30 5.1K → GND` (индикатор). Vendor подтверждает:
 70418», теория «оба LED у USB-C это индикаторы питания» с привязкой
 цветов к шинам) опровергнуты замером 2026-06-03 и удалены из этого
 документа. Корнем ошибки была инверсия от прежнего патча `0006`
-(active-low, LED горел в покое), патч удалён (коммит bc0f2cdbe).
+(active-low, LED горел в покое), патч удалён, номер в серии не переиспользован.
 Актуальный разбор в `docs/led_setup.md` и `docs/gpio_setup.md`.
 
 ### USER button (gpio-keys на porta 30)
@@ -119,19 +119,25 @@ reverse-bias. К GPIO не подключён, к `SYS_RSTN` не подключ
 + наблюдение (горит при загрузке = горит всегда). Актуальный итог:
 `docs/led_setup.md`.
 
-### Wi-Fi/BT чип это AIC8800D-44Pin (Fn-Link N240 модуль)
+### Wi-Fi/BT модуль на схемах 70405/70415/70418 это AIC8800D-44Pin (Fn-Link N240)
 
 Footprint U13 на схеме SCH блок "Wi-Fi & BT". 44-pin модуль
-Fn-Link N240 на базе AIC8800D. Подтверждает что наш `vid:0x5449
-did:0x0145` (определённый user'ом) соответствует AIC8801 U03 die в
-AIC8800D пакете. "AIC8800D80" это маркетинговое имя, под которым Sipeed
-продаёт Wi-Fi этого же модуля (и так же называется его прошивка, см.
-NOTICE.md), а не отдельный вариант чипа: физически на платах LicheeRV Nano
-70405/70415/70418 стоит этот AIC8800D-44Pin (Fn-Link N240).
+Fn-Link N240 на базе AIC8800D. Это согласуется с `vid:0x5449 did:0x0145`,
+который на такой плате отдаёт SDIO, то есть с die AIC8801 U03 в корпусе
+AIC8800D.
+
+Важно: вывод «AIC8800D80 это только маркетинговое имя того же модуля»
+опровергнут на железе. Платы закупки 2026-07 отдают по SDIO
+`vid:0xC8A1 did:0x0082` и печатают `USE AIC8800D80`, `chip_rev 7`, то есть
+несут физически другой радиомодуль. Schematic именно этой ревизии PCB в
+файлохранилище Sipeed не опубликован, три схемы в `docs/datasheets/`
+описывают более ранние платы. Определять чип надо по `dmesg`, а не по
+схеме и не по маркировке. Разбор различий и оба комплекта firmware в
+`docs/wifi_setup.md`, раздел «Известные особенности AIC8800».
 
 R47..R53 это 33K pull-up на SDIO1 D0/D1/D2/D3/CMD/CLK линии между
-SoC и AIC8800. WF_PWR_EN (через R53 33K) включает Wi-Fi питание.
-HOST_WAKE_WF (через R54 33K) сигнал wake-on-wlan от AIC8800 в SoC.
+SoC и радиомодулем. WF_PWR_EN (через R53 33K) включает Wi-Fi питание.
+HOST_WAKE_WF (через R54 33K) сигнал wake-on-wlan от модуля в SoC.
 
 UART HCI для Bluetooth выведен на 4-pin connector RN1 (NC по
 дефолту, требует установки соединительных резисторов): BT_CTS,
@@ -173,8 +179,8 @@ SoC pins (соответствие по схеме 70418 page 4):
 
 Наш patches/linux/0003-cv1800b-ephy-init-driver.patch обеспечивает
 init sequence для PHY чтобы он отвечал на MDIO bus. Без него PHY
-phy_id reads as zero, stmmac probe fails. Что мы сейчас и видим в
-свежей сборке если CV1800B_EPHY_INIT не =y.
+phy_id reads as zero, stmmac probe fails. В сборке проекта опция
+включена (`--enable CV1800B_EPHY_INIT` в цели `kernel` Makefile).
 
 Init-последовательность сверена с vendor BSP (`drivers/net/phy/cvitek.c`
 функция `cv182xa_phy_config_init` + `dwmac-cvitek.c::bm_eth_reset_phy`):
@@ -247,11 +253,13 @@ monitoring и аналогичных.
   (`GPIO_ACTIVE_HIGH`, default-state off, во всех 4 DTS) + гашение в boot
   через `patches/fsbl/0002`. Прежняя идея active-low (патч 0006) опровергнута
   на железе 2026-06-03 и удалена (полярность active-high верна)
-- [ ] Удалить или пометить как unconnected USER button в DTS
-  (mainline ошибка, hardware физически отсутствует)
-- [ ] Обновить `docs/adc_setup.md` с правильной формулой через
-  делитель R6+R10 (множитель ~2.385 для header voltage)
-- [ ] Обновить `docs/sg2002_pin_map.md` упоминая ADC divider
+- [x] USER button в DTS оставлена как есть. Прежний пункт «удалить как
+  unconnected» снят: кнопка физически распаяна и работает, подтверждено
+  evtest 2026-06-13 (см. раздел «USER button» выше)
+- [x] `docs/adc_setup.md` содержит формулу через делитель R6+R10
+  (множитель около 2.385 для header voltage)
+- [x] `docs/sg2002_pin_map.md` упоминает ADC divider в таблице правой
+  стороны header и в списке свободных пинов
 - [ ] Когда добавим LCD bring-up, описать AW9962E backlight в
   отдельном узле DTS
 - [x] USB OTG узел в `cv180x.dtsi` сделан патчем 0007
@@ -261,7 +269,7 @@ monitoring и аналогичных.
 ## Где лежат PDF
 
 Схема (три ревизии) и SG2002 TRM закоммичены в `docs/datasheets/` с манифестом
-(имена, размеры, SHA256, источник, карта раздел->цитата) в
+(имена, размеры, SHA256, источник, карта раздел → цитата) в
 `docs/datasheets/README.md`. Цитаты «по TRM гл.X Table Y» в преамбулах патчей
 и в docs привязаны к этим файлам по SHA256.
 
