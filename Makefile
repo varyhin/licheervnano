@@ -372,6 +372,16 @@ soph_tpu-install: soph_tpu
 	$(CROSS)strip --strip-debug $(ROOTFS)/lib/modules/$(KERNEL_VER)/extra/soph_tpu.ko
 	depmod -a -b $(ROOTFS) $(KERNEL_VER)
 
+# FSBL берётся из firmware/cv181x.bin, это наша сборка цели fsbl.
+# Рядом лежит firmware/cv181x-vendor.bin, готовый BL2 из того же SDK Sipeed
+# (дата сборки 2024-04-02 внутри блоба). Ни одна цель его не использует, он
+# держится как аварийный fallback на случай, когда цель fsbl не собирается
+# и надо получить загружаемый образ прямо сейчас. Формат тот же, fiptool его
+# принимает (проверено 2026-08-07), подменяется одним аргументом:
+#   python3 src/fiptool/fiptool --fsbl firmware/cv181x-vendor.bin ... images/fip.bin
+# Цена подмены это потеря наших патчей FSBL: 0002 гасит синий USER LED на
+# всё время загрузки, 0003 обесточивает AIC8800 и без него Wi-Fi не встаёт
+# после reboot на W/WE. Для готового образа fallback не годится.
 fip:
 	@echo "==> fip container"
 	rm -f $(IMAGES)/fip.bin
@@ -403,6 +413,13 @@ image:
 # SSH host-ключи, random-seed) вычищается из p2 при упаковке и генерируется
 # заново на первом boot каждой карты (machine-id пишет systemd, ключи
 # scripts/regenerate-ssh-host-keys.service). rootfs/trixie не трогается.
+#
+# Весь блок с losetup идёт под set -e и EXIT-trap. Без set -e команды,
+# склеенные через «;», маскировали отказ целиком: код возврата брался от
+# последней команды, поэтому упавшие cp ядра и dtb давали пустой загрузочный
+# раздел при make image с кодом 0 (замер 2026-08-07). Trap нужен уже вместе
+# с set -e, иначе прерванный прогон оставляет занятый loop и смонтированные
+# /tmp/sd-*. Trap отдаёт исходный код выхода, проверено на dash и bash.
 _image_pack:
 	@echo "==> SD image pack"
 	rm -f $(IMAGES)/licheervnano.img
@@ -412,14 +429,18 @@ _image_pack:
 	parted -s $(IMAGES)/licheervnano.img mkpart primary fat16 1MiB  132MiB
 	parted -s $(IMAGES)/licheervnano.img mkpart primary ext4  132MiB 100%
 	parted -s $(IMAGES)/licheervnano.img set 1 boot on
+	set -e; \
 	LOOP=$$(losetup -fP --show $(IMAGES)/licheervnano.img); \
+	trap 'rc=$$?; umount /tmp/sd-boot /tmp/sd-root 2>/dev/null || true; losetup -d $${LOOP} 2>/dev/null || true; rmdir /tmp/sd-boot /tmp/sd-root 2>/dev/null || true; exit $$rc' EXIT; \
+	trap 'exit 130' INT; \
+	trap 'exit 143' TERM; \
 	partprobe $${LOOP} || true; \
 	udevadm settle --timeout=10 || true; \
 	for i in 1 2 3 4 5 6; do \
 	  [ -b $${LOOP}p1 ] && [ -b $${LOOP}p2 ] && break; \
 	  partprobe $${LOOP} || true; udevadm settle --timeout=3 || true; \
 	done; \
-	[ -b $${LOOP}p1 ] || { echo "partition nodes $${LOOP}p1/p2 missing"; losetup -d $${LOOP}; exit 1; }; \
+	[ -b $${LOOP}p1 ] || { echo "partition nodes $${LOOP}p1/p2 missing"; exit 1; }; \
 	mkfs.vfat -F 16 -n BOOT  $${LOOP}p1 >/dev/null; \
 	mkfs.ext4 -F   -L root   $${LOOP}p2 >/dev/null 2>&1; \
 	mkdir -p /tmp/sd-boot /tmp/sd-root; \
@@ -449,10 +470,9 @@ _image_pack:
 	install -m 644 $(PROJ)/scripts/regenerate-ssh-host-keys.service /tmp/sd-root/etc/systemd/system/; \
 	mkdir -p /tmp/sd-root/etc/systemd/system/multi-user.target.wants; \
 	ln -sf ../regenerate-ssh-host-keys.service /tmp/sd-root/etc/systemd/system/multi-user.target.wants/regenerate-ssh-host-keys.service; \
-	sync; \
-	umount /tmp/sd-boot /tmp/sd-root; \
-	losetup -d $${LOOP}; \
-	rmdir /tmp/sd-boot /tmp/sd-root
+	sync
+	@# Размонтирование, отцепление loop и уборка /tmp/sd-* делает EXIT-trap
+	@# выше, одинаково на успехе и на отказе.
 
 # Сжатие готового образа в .gz для прошивки balenaEtcher (Etcher и 7-Zip
 # понимают .gz нативно). Уровень -1: образ почти весь нули (жмётся быстро),
