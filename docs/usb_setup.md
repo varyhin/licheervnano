@@ -285,21 +285,25 @@ UDC=$(ls /sys/class/udc/ | head -n1)
 echo "$UDC" > UDC
 ```
 
-`/etc/systemd/system/usb-gadget.service`:
+`/etc/systemd/system/usb-gadget.service`. Ниже реальный юнит проекта,
+источник это `scripts/usb-gadget.service`:
 
 ```
 [Unit]
-Description=USB Gadget (ACM)
-After=local-fs.target
-DefaultDependencies=no
+Description=USB Gadget (ACM console) on DWC2
+Documentation=https://docs.kernel.org/usb/gadget_configfs.html
+After=sys-kernel-config.mount local-fs.target
+Wants=sys-kernel-config.mount
+ConditionPathExists=/sys/class/udc
 
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/setup-usb-gadget.sh
+ExecStop=/bin/sh -c 'echo "" > /sys/kernel/config/usb_gadget/g1/UDC 2>/dev/null || true'
 RemainAfterExit=yes
 
 [Install]
-WantedBy=sysinit.target
+WantedBy=multi-user.target
 ```
 
 Активация:
@@ -352,7 +356,7 @@ ACM-only single-function gadget с автозапуском при boot. Console
 
 ### Почему ACM-only
 
-Изначально планировалось composite ACM+RNDIS+NCM (console + USB Ethernet). На железе пройдены три итерации:
+Изначально планировалось composite ACM+RNDIS+NCM (console + USB Ethernet). На железе пройдены три неудачные итерации и четвёртая, финальная:
 
 | Итерация | Конфигурация | Что произошло |
 |---|---|---|
@@ -434,7 +438,7 @@ systemctl status serial-getty@ttyGS0.service
 
 На ПК после подключения Type-C кабеля:
 
-**Linux:**
+Linux.
 ```
 dmesg | tail
 # usb X-Y: new high-speed USB device
@@ -446,7 +450,7 @@ ls /dev/ttyACM*
 # /dev/ttyACM0
 ```
 
-**Windows:**
+Windows.
 ```powershell
 Get-PnpDevice | Where-Object {$_.InstanceId -match "VID_1D6B"} | Format-Table Status, Class, FriendlyName, InstanceId -AutoSize
 
@@ -664,7 +668,7 @@ CONFIG_USB_FUNCTION_MASS_STORAGE=y  # UMS, плата это USB-флешка
 
 ### Linux systemd
 
-Стандартный сценарий, см. раздел «Systemd-сервис автозапуска» выше. ACM поднимается через `sysinit.target`, доступен через ~3 секунды после kernel start (~5-8 секунд от power-on).
+Стандартный сценарий, см. раздел «Systemd-сервис автозапуска» выше. ACM поднимается юнитом в `multi-user.target`, доступен через ~3 секунды после kernel start (~5-8 секунд от power-on).
 
 ### Сводка по стадиям
 

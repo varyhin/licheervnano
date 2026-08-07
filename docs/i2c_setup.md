@@ -64,7 +64,7 @@ cat /sys/bus/i2c/devices/i2c-1/name
 i2cdetect -F 1
 # I2C, SMBus quick command, SMBus byte read, и т.д. = yes
 
-# 4. Сканирование (пустая сетка без устройств — это нормально)
+# 4. Сканирование (пустая сетка без устройств это нормально)
 i2cdetect -y 1
 i2cdetect -y 3
 # 16x16 grid с '--' в каждой клетке означает bus работает, устройств нет

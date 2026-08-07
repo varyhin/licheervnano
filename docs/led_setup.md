@@ -1,7 +1,10 @@
 # USER LED на LicheeRV Nano (GPIOA14)
 
-Управляемый светодиод платы и его настройка. Итог проверок на железе
-2026-06-03/04.
+Управляемый светодиод платы и его настройка.
+
+Статус подтверждён на железе 2026-06-03/04. Синий user-LED управляется
+через sysfs, полярность active-high, пинмукс пада задан в board-DTS,
+раннее гашение в boot делает FSBL.
 
 ## Что на плате
 
@@ -30,8 +33,9 @@
 ## Как ставится пинмукс это DTS pinctrl
 
 `SD0_PWR_EN` это именованный пин mainline (`PIN_SD0_PWR_EN` в
-`pinctrl-sg2002`), поэтому в отличие от I2C1/UART (там runtime-devmem, см.
-`docs/i2c_setup.md`) пинмукс задаётся в board-DTS:
+`pinctrl-sg2002`), поэтому пинмукс задаётся в board-DTS, ровно как у
+I2C1/I2C3 и UART1/UART2 (те же именованные пины, патч 0021, см.
+`docs/i2c_setup.md`):
 
 ```
 &pinctrl {
@@ -50,7 +54,7 @@
 ```
 
 Ядро применяет `default`-стейт при probe `leds-gpio`, переводя пад в GPIO без
-зависимости от boot. Тот же патч `patches/linux/0018-...-user-led.patch`
+зависимости от boot. Тот же патч `patches/linux/0018-licheerv-nano-user-led.patch`
 (покрывает b/e/w/we) ещё и выключает LED по умолчанию (`default-state = "off"`
 вместо `linux,default-trigger = "mmc0"`, в покое погашен) и переименовывает
 sysfs-лейбл `licheerv-nano:green:user` → `licheerv-nano:blue:user` (LED синий).
@@ -91,8 +95,9 @@ echo mmc0 > $LED/trigger       # вспышка при доступе к SD
 и `panic` (добавлены через kernel-config). Примеры по каждому режиму в
 `docs/gpio_setup.md` (раздел USER LED).
 
-- `netdev`: `echo netdev > $LED/trigger; echo eth0 > $LED/device_name;
-  echo 1 > $LED/link; echo 1 > $LED/tx; echo 1 > $LED/rx` (на W/WE `wlan0`).
+- `netdev`: `echo netdev > $LED/trigger; echo end0 > $LED/device_name;
+  echo 1 > $LED/link; echo 1 > $LED/tx; echo 1 > $LED/rx`. Имя Ethernet-интерфейса
+  на этой плате это `end0`, на W/WE вместо него можно указать `wlan0`.
 - `panic`: LED при kernel panic. Один LED, триггеры взаимоисключающие; для
   panic поверх обычного режима есть DT-свойство `panic-indicator`.
 
@@ -107,5 +112,5 @@ DR `+0x00`, DIR `+0x04`, EXT_PORTA `+0x50` (бит14). Пинмукс пада `
 
 - `docs/gpio_setup.md` (USER LED через sysfs + все режимы с примерами)
 - `docs/sg2002_pin_map.md` (GPIOA14 = SD0_PWR_EN)
-- `docs/i2c_setup.md`, `docs/uart_setup.md` (runtime-devmux паттерн для пинов
-  без mainline-имени; для LED не нужен, пин именованный)
+- `docs/i2c_setup.md`, `docs/uart_setup.md` (тот же приём pinctrl в board-DTS,
+  патч 0021; runtime-сервисы devmem удалены 2026-06-11)

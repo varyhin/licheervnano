@@ -38,7 +38,7 @@ Nano) и их распиновка на 2x14-pin header Sipeed LicheeRV Nano.
 | SPI_NOR/SPI_NAND | нет (на EMMC контроллере, отдельный SoC блок) | не применимо |
 | PWM[0..15] | все 16 каналов выведены только как alt пинов UART/I2C | заблокирован |
 | PWM0_BUCK | нет (internal power buck pad SoC 58) | не выведен |
-| ADC1 | да (отдельный SoC pin 59) | в DTS okay, не проверен |
+| ADC1 | да (отдельный SoC pin 59, через делитель R6+R10 на плате) | active, `iio:device0`, чтение raw подтверждено на железе |
 | Ethernet PHY | да на E/WE (SoC pins 62-65) | active на E/WE |
 | SDIO0 (boot SD) | да (SoC 6-12) | active как boot device |
 | SDIO1 (Wi-Fi AIC8800) | да на W/WE (SoC 51-56) | active на W/WE |
@@ -48,7 +48,7 @@ Nano) и их распиновка на 2x14-pin header Sipeed LicheeRV Nano.
 | GPIOA xx | XGPIOA[NN], gpiochip0 | active |
 | GPIOC xx | XGPIOC[NN] на MIPI пинах, gpiochip2 | active |
 | GPIOB xx | XGPIOB[NN] на ETH PHY пинах, gpiochip1 | active |
-| PWR_GPIO xx | GRTC domain, gpiochip3 | active |
+| PWR_GPIO xx | банк RTCSYS_GPIO, отдельный от gpiochip0-3 | как Linux gpiochip не инстанцируется |
 
 ## Распиновка 2x14 header (по Sipeed RV_Nano_3.jpg)
 
@@ -89,7 +89,7 @@ SPI на header не выведен.
 | GND | - | - | - | GND |
 | GPIOA 29 / UART2 RX / IIC1 SDA | 29 | IIC0_SDA | XGPIOA[29], UART1_RX, UART2_RX | UART2 RX (pinmux 0x2) |
 | GPIOA 28 / UART2 TX / IIC1 SCL / ADC | 28 | IIC0_SCL | XGPIOA[28], UART1_TX, UART2_TX | UART2 TX (pinmux 0x2) |
-| ADC1 | 59 | ADC1 | XGPIOB[3], KEY_COL2 | ADC channel 1 (SAR-ADC) |
+| ADC1 | 59 | ADC1 | XGPIOB[3], KEY_COL2 | ADC channel 1 (SAR-ADC), на header через делитель R6 10K + R10 5.1K |
 | GPIOP 19 / UART3 TX / IIC1 SCL / PWM 4 / SPI2 CS / SDIO1 D3 | 51 | SD1_D3 | PWR_GPIO[18], SPI2_CS_X, IIC1_SCL, UART3_CTS, PWM[4] | I2C1 SCL (pinmux 0x2) или SDIO1 D3 на W/WE |
 | GPIOP 22 / IIC1 SDA / UART3 RTS / PWM 8 / SPI2 MISO / SDIO1 D1 | 54 | SD1_D0 | PWR_GPIO[21], SPI2_SDI, IIC1_SDA, UART3_RTS, PWM[7] | I2C1 SDA (pinmux 0x2) или SDIO1 D0 на W/WE. Sipeed маркировка SDIO1 D1 на этом пине ошибочна, реально SoC SD1_D0 |
 | GPIOP 21 / UART3 CTS / IIC3 SCL / PWM 5 / SPI2 MOSI / SDIO1 CMD | 55 | SD1_CMD | PWR_GPIO[22], SPI2_SDO, IIC3_SCL, EPHY_LNK_LED, PWM[8] | I2C3 SCL (pinmux 0x2) или SDIO1 CMD на W/WE |
@@ -185,18 +185,27 @@ header переключение pinmux на одну функцию ломает
 - Правая сторона: GPIOA 14 уже user LED, но через sysfs можно
   переключить trigger
 - ADC1 (SoC pin 59) свободен, не overlapping с GPIOA 28 пином, это
-  отдельный header pin рядом
+  отдельный header pin рядом. Между header и падом SoC стоит делитель
+  R6 10K + R10 5.1K на GND, поэтому пад видит `header_V × 0.338`, а
+  расчётный диапазон на header это 0..9.76 В. Формула перевода raw в
+  напряжение на header в `docs/adc_setup.md`
 
 ## Аппаратное расположение GPIO chips
 
-mainline gpio-сubsystem видит 4 chip'а через mainline pinctrl-sg2002:
+mainline gpio-subsystem видит 4 chip'а через mainline pinctrl-sg2002:
 
-| chip | offset | домен | пример пинов на header |
-|---|---|---|---|
-| gpiochip0 | XGPIOA | EMMC/SD0/console power domain | GPIOA 14/15/22-26/28/29 |
-| gpiochip1 | XGPIOB | ETH PHY power domain (только E/WE) | XGPIOB[3] (ADC pin) |
-| gpiochip2 | XGPIOC | MIPI power domain (camera/display) | header не выводит |
-| gpiochip3 | PWR_GPIO | RTC domain (always-on) | GPIOP 19-23 |
+| chip | offset | база | домен | пример пинов на header |
+|---|---|---|---|---|
+| gpiochip0 | XGPIOA | 0x03020000 | EMMC/SD0/console power domain | GPIOA 14/15/22-26/28/29 |
+| gpiochip1 | XGPIOB | 0x03021000 | ETH PHY power domain (только E/WE) | XGPIOB[3] (ADC pin) |
+| gpiochip2 | XGPIOC | 0x03022000 | MIPI power domain (camera/display) | header не выводит |
+| gpiochip3 | XGPIOD | 0x03023000 | active-домен GPIO3 | header не выводит |
+
+Пины `GPIOP 18-23` правой стороны header в GPIO-режиме это `PWR_GPIO[18..23]`
+банка RTCSYS_GPIO (база 0x05021000), а она отдельна от gpiochip0-3 и в
+текущем ядре как Linux gpiochip не инстанцируется. Поэтому эти пады
+доступны только в периферийных функциях (I2C1/I2C3 на B/E, SDIO1 на W/WE),
+но не как Linux-GPIO. Подробности в `docs/gpio_setup.md`.
 
 Управление через `gpioinfo`, `gpioset`, `gpioget` (libgpiod в EXTRA_PKGS).
 
@@ -204,12 +213,15 @@ mainline gpio-сubsystem видит 4 chip'а через mainline pinctrl-sg2002
 
 Раскрыть в bring-up по убыванию приоритета:
 
-- ADC1 проверить mainline `iio:device0` (узел `&saradc` уже okay)
-- GPIO документация и тесты через libgpiod
+- ADC1 проверить шкалу внешним источником напряжения на header (тракт и
+  чтение raw уже подтверждены, множитель делителя пока расчётный)
 - I2C4 + Goodix touchscreen (если есть LCD модуль)
-- USB OTG (узел `usb@` нужно добавить, mainline пока не описывает)
 - MIPI DSI display (vendor backport нужен)
 - MIPI CSI camera (vendor backport нужен)
+
+Сделано и вынесено в отдельные документы: GPIO через libgpiod
+(`docs/gpio_setup.md`), USB OTG узел `usb@4340000` патчем
+`patches/linux/0007` (`docs/usb_setup.md`).
 
 ## Связанные документы
 

@@ -101,4 +101,4 @@ uapi-контракт `CVITPU_GET_PADDR`) и DT-узел в `patches/linux/0017`
 - Sipeed Wiki, LicheeRV Nano intro (1 TOPS INT8 + BF16, оговорка про 70405/0.5T)
 - github.com/sophgo/tdl_models (список моделей и замеры cv181x INT8)
 - github.com/sophgo/tpu-mlir (BSD-2), github.com/sophgo/cviruntime
-- внутреннее, аудит осуществимости форвард-порта (память `tpu-cvitek-mainline-feasibility`)
+- `patches/cvitek-tpu-vendor/0001` и `overlay/cvitek-tpu-vendor/` это сам форвард-порт драйвера, `patches/linux/0017` это DT-узел

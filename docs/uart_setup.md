@@ -197,6 +197,6 @@ CTS/RTS не подключены к pinmux (нужны были бы допол
 ## Связанные документы
 
 - `docs/usb_setup.md` это альтернатива UART через ACM gadget (Type-C → COM-port на ПК)
-- `docs/i2c_setup.md` это похожая структура pinmux через devmem на 2x14 header
+- `docs/i2c_setup.md` это похожая структура pinmux через pinctrl того же патча 0021 на 2x14 header
 - `docs/sg2002_pin_map.md` это распиновка SoC + 2x14 header
 - `patches/linux/0005-licheerv-nano-uart.patch` это активация UART1+UART2

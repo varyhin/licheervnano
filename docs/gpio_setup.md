@@ -219,7 +219,7 @@ echo mmc0 > $LED/trigger            # включить индикацию SD-а�
 Пример настройки `netdev`:
 ```
 echo netdev > $LED/trigger
-echo eth0 > $LED/device_name        # привязать к интерфейсу
+echo end0 > $LED/device_name        # привязать к интерфейсу (end0 на E/WE, wlan0 на W/WE)
 echo 1 > $LED/link                  # гореть при наличии линка
 echo 1 > $LED/tx ; echo 1 > $LED/rx # мигать на трафике
 ```
@@ -414,7 +414,7 @@ UART1 во время активной сессии) приведёт к пот�
   licheerv-nano:blue:user/trigger`, должно быть `[mmc0]` в квадратных
   скобках. Если другой trigger, переключите echo
 - USER button не генерирует events → проверьте `dmesg | grep gpio-keys`,
-  должна быть строка о регистрации input device. Если нет ошибки —
+  должна быть строка о регистрации input device. Если ошибки нет,
   возможно физический контакт сломан или GPIO ACTIVE_LOW логика
   инвертирована для вашей ревизии платы
 
