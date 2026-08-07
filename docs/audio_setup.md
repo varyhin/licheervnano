@@ -1,8 +1,10 @@
 # Audio bring-up на LicheeRV Nano
 
-Документ собирает информацию по аудио-подсистеме SG2002 + LicheeRV Nano для bring-up под mainline Linux 6.18.29. Статус на 2026-06-12: и capture (микрофон), и playback (динамик через AW8010A) работают на железе. Capture повторно подтверждён на свежем образе 2026-06-12 (gain 18, пик 12% на речи с полуметра, запись подтверждена на слух). Голос, записанный микрофоном, слышен при `aplay -D plughw:0,1` на внешнем 8Ω динамике (header VOP/VON). Усилитель включается только на время воспроизведения (стрим-гейтинг через SPK_EN, patches 0012/0013). Детали по фазам в конце документа.
+Документ собирает информацию по аудио-подсистеме SG2002 + LicheeRV Nano для bring-up под mainline Linux 6.18.29. Детали по фазам в конце документа.
 
-> Поправка от 2026-06-01 (патч 0016). Railing на высоких ступенях gain и «плавающий L/R слот» были НЕ из-за CTUNE, а из-за гонки двух I2S-мастеров такта (контроллер I2S0 мастерил BCLK одновременно с master-only ADC). Фикс это сделать контроллер захвата clock slave (codec-master в DT 0010 + `set_fmt` управляет `BLK_MASTER_MODE`/`BCLK_OUT_FORCE_EN`, патч 0016), плюс `channels_min=2` и settle 1000мс. Патч 0014 (CTUNE) УДАЛЁН как редундантный, `scripts/pick-loud-channel.py` и `ttable` больше не нужны, слот детерминирован. Упоминания CTUNE, 0014, pick-loud и ttable ниже исторические. Авторитетный разбор зафиксирован в лабораторном журнале проекта.
+Статус подтверждён на железе 2026-06-12. И capture (микрофон), и playback (динамик через AW8010A) работают. Capture повторно проверен на свежем образе 2026-06-12 (gain 18, пик 12% на речи с полуметра, запись подтверждена на слух). Голос, записанный микрофоном, слышен при `aplay -D plughw:0,1` на внешнем 8Ω динамике (header VOP/VON). Усилитель включается только на время воспроизведения (стрим-гейтинг через SPK_EN, patches 0012/0013). Детальный свип по ступеням gain пройден на E 2026-06-13, методика и эталонные числа в `docs/audio_capture_hw_test.md`.
+
+> Поправка от 2026-06-01 (патч 0016). Railing на высоких ступенях gain и «плавающий L/R слот» были НЕ из-за CTUNE, а из-за гонки двух I2S-мастеров такта (контроллер I2S0 мастерил BCLK одновременно с master-only ADC). Фикс это сделать контроллер захвата clock slave (codec-master в DT 0010 + `set_fmt` управляет `BLK_MASTER_MODE`/`BCLK_OUT_FORCE_EN`, патч 0016), плюс `channels_min=2` и settle 1000мс. Патч 0014 (CTUNE) УДАЛЁН как редундантный, `scripts/pick-loud-channel.py` и `ttable` больше не нужны, слот детерминирован. Упоминания CTUNE, 0014, pick-loud и ttable ниже исторические.
 
 ## Запись с микрофона: оптимальные настройки и диагностика
 
@@ -54,10 +56,19 @@ bash /tmp/gainsweep.sh
 
 Лестница монотонна, gain0→gain24 это rms 3→737 = +47.8 dB (ровно спека PGA 0..+48 dB), правый вход на всех ступенях молчит (R=0). Полный свип и критерии в `docs/audio_capture_hw_test.md`.
 
-Вывод по дистанции:
-- близко 30-50 см: gain 24 (пик 43%, без клипа, самый громкий аналог).
-- громче или ближе ~20 см: снизить до 20-22, иначе пики клиппят.
-- 2 м и дальше: gain 24, аналога уже мало.
+Вывод по дистанции.
+
+| Дистанция | Рекомендуемый gain | Основание |
+|---|---|---|
+| 30-50 см | 24 | пик 43% на речи, клиппинга нет |
+| ближе 20 см или очень громкий источник | 20-22 | запас на пики |
+| 2 м и дальше | 24 | аналогового усиления уже мало |
+
+После фикса clock-slave (патч 0016) вся лестница 0..24 монотонна и рабочая,
+запрещённых ступеней нет. Отдельно проверялась ступень 20, которая до фикса
+была нестабильной: шесть прогонов на E 2026-06-13 дали peak 1735..2376,
+rms 355..471, clip 0, правый канал 0. Подробности в
+`docs/audio_capture_hw_test.md`.
 
 Про уровень: аналог упирается в +48 dB (gain 24), поэтому даже вблизи rms умеренный. Это физика тракта, не настройка. На vendor-faithful сборке громкая близкая речь на gain 24 дала пик 32%, значит цифровой makeup ×2-3 безопасен по запасу (поднимает пик до ~64-96% без клиппинга). Сделать можно постобработкой или прямо в ALSA плагином `type softvol` на capture (даёт регулятор цифрового усиления), оба усиливают и шум. Детальная методика проверки записи по ступеням gain в `docs/audio_capture_hw_test.md`.
 
@@ -131,25 +142,25 @@ amixer -c 0 cset numid=1 18,0
 arecord -D mic -c 1 -r 48000 -f S16_LE /tmp/mic.wav
 ```
 
-- `numid=1 Internal I2S Capture Volume` это аналоговый PGA, диапазон 0..24 = 0..+48 dB шагом 2 dB. Рабочий дефолт это 18 (+36 dB): чистый, слышен на динамике. `,0` ставит правый канал в минимум (правый вход не подключён, минимум на нём держит downmix чище).
-- НЕ использовать gain 20 (`0xA800`): точечно нестабилен, даёт railing/тишину даже после фикса clock-slave (патч 0016). Чистые ступени: …14, 16, 18, 22. Громкий близкий источник может клиппить на пиках это снизить до 14-16.
-- Историческая заметка: railing высоких ступеней gain (≥16) сначала атрибутировали неподстроенной тактовой ADC и лечили CTUNE-патчем 0014 (замер 2026-05-29 выглядел успешным). Настоящей причиной была гонка двух I2S-мастеров такта, устранена патчем 0016 (clock slave), патч 0014 удалён как редундантный. Подробности ниже в разделе про подбор gain.
+- `numid=1 Internal I2S Capture Volume` это аналоговый PGA, диапазон 0..24 = 0..+48 dB шагом 2 dB. Рабочий дефолт это 18 (+36 dB), чистый и слышимый на динамике. `,0` ставит правый канал в минимум (правый вход не подключён, минимум на нём держит downmix чище).
+- Вся лестница 0..24 после патча 0016 монотонна, запрещённых ступеней нет. Прежнее требование «не использовать gain 20» снято свипом на E 2026-06-13, ступень стабильна в шести прогонах подряд.
+- Историческая заметка. Railing высоких ступеней gain (≥16) сначала атрибутировали неподстроенной тактовой ADC и лечили CTUNE-патчем 0014 (замер 2026-05-29 выглядел успешным). Настоящей причиной была гонка двух I2S-мастеров такта, устранена патчем 0016 (clock slave), патч 0014 удалён как редундантный. Подробности выше в разделе про подбор gain.
 
 ### Почему именно так
 
 - Сырое моно через `hw:0,0 -c 1` даёт щелчки: кодек жёстко формирует 2-канальный I2S-кадр (`CV1800B_RXADC_CHANNELS=2`), а контроллер настраивается на 1 слот, BCLK расходится вдвое, кадровая синхронизация плывёт. Поэтому моно берут через `plughw` (родной стереокадр + downmix), а не через сырой `hw:0,0 -c 1`.
-- `plughw:0,0 -c 1` держит родной стереокадр (щелчков нет) и сводит L+R. Раньше боялись «шума висящего правого входа», но после CTUNE-фикса (patch 0014) правый вход молчит (rms ~4), поэтому downmix чистый.
+- `plughw:0,0 -c 1` держит родной стереокадр (щелчков нет) и сводит L+R. Раньше боялись «шума висящего правого входа», но после фикса clock-slave (патч 0016) и settle правый вход молчит (rms ~4), поэтому downmix чистый.
 - ttable для capture НЕ работает под `type plug` (даёт тишину, проверено на железе). Полное исключение правого канала через `type route` теоретически возможно, но не нужно: правый и так молчит, а downmix `plughw` уже чистый. Канонический способ это `arecord -D plughw:0,0 -c 1` (или алиас `mic` = простой `type plug`).
 
 ### Диагностика и поиск максимального gain (свип)
 
-Сначала посмотреть оба канала раздельно (видно, что правый рельсит):
+Сначала посмотреть оба канала раздельно, чтобы убедиться, что сигнал только в левом:
 
 ```
 arecord -Dhw:0,0 -c 2 -r 48000 -f S16_LE -V stereo -d 5 /dev/null
 ```
 
-Левая полоска VU это микрофон (на близком источнике почти зашкаливает), правая молчит (после CTUNE-фикса висящий правый вход тих, rms ~4).
+Левая полоска VU это микрофон (на близком источнике почти зашкаливает), правая молчит (после фикса clock-slave висящий правый вход тих, rms ~4).
 
 Найти максимальный gain без клиппинга простым свипом (метр в реальном времени, файл не нужен, пишем в `/dev/null`):
 
@@ -175,7 +186,7 @@ dd if=/tmp/mic.wav bs=1 skip=44 2>/dev/null | od -An -tx2 -w2 | sort -u | wc -l
 
 ## Hardware-аудио тракт
 
-На плате есть встроенный аналоговый codec в SoC и два внешних компонента: MEMS-микрофон и audio-amp. Весь тракт **аналоговый** на границе SoC, цифровая сторона это I2S0 внутри SoC между CPU и встроенным codec.
+На плате есть встроенный аналоговый codec в SoC и два внешних компонента: MEMS-микрофон и audio-amp. Весь тракт аналоговый на границе SoC, цифровая сторона это I2S0 внутри SoC между CPU и встроенным codec.
 
 ```
 +------------+   analog mic   +-------------------+ I2S0  +--------+
@@ -220,11 +231,11 @@ dd if=/tmp/mic.wav bs=1 skip=44 2>/dev/null | od -An -tx2 -w2 | sort -u | wc -l
 
 ### Динамик внешний (не на плате)
 
-На LicheeRV Nano динамика **нет** припаянного. AW8010A это только усилитель, его BTL-выходы `VO_P/VO_N` выведены на 2x14 header как label `VOP / VON`. По schematic 70418:
+Припаянного динамика на LicheeRV Nano нет. AW8010A это только усилитель, его BTL-выходы `VO_P/VO_N` выведены на 2x14 header как label `VOP / VON`. По schematic 70418:
 
 | Header pin | Сигнал | Назначение |
 |---|---|---|
-| Left side pos 4 | GPIOA 15 (SoC pin 17, pad `SPK_EN`) | Likely **AW8010A enable** для включения амплифа |
+| Left side pos 4 | GPIOA 15 (SoC pin 17, pad `SPK_EN`) | AW8010A enable, подтверждено на железе WE 2026-06-09 |
 | Left side pos 5 | VOP | AW8010A Class-D positive output |
 | Left side pos 6 | VON | AW8010A Class-D negative output |
 
@@ -318,8 +329,8 @@ Note: cv181x family names в vendor SDK означает «cv181x board» это
 | DesignWare I²S | `sound/soc/dwc/dwc-i2s.c` | есть (используется на других SoC) |
 | Simple-audio-card | `sound/soc/generic/simple-card.c` | есть |
 | Simple-amplifier | `sound/soc/codecs/simple-amplifier.c` | есть, подходит для AW8010A |
-| Sophgo audio drivers | `sound/soc/sophgo/` | **нет**, директории не существует |
-| cv180x audio DT-узлы | `cv180x.dtsi` | **нет** ADC/DAC/I²S узлов |
+| Sophgo audio drivers | `sound/soc/sophgo/` | нет, директории не существует |
+| cv180x audio DT-узлы | `cv180x.dtsi` | нет ADC/DAC/I²S узлов |
 | Kernel config audio | `defconfig` | `SND_SOC=n`, никакие codec не включены |
 
 Итого: всё что относится к SG2002-specific audio это нужно backport. Mainline-side только framework.
@@ -337,7 +348,7 @@ Note: cv181x family names в vendor SDK означает «cv181x board» это
 | 7. DT-узлы в cv180x.dtsi | adc@0300A100, dac@0300A000, i2s@04130000, sound_adc, sound_dac | ~40 строк DTS |
 | 8. Kernel config | SND_SOC + SOPHGO codec configs | ~10 строк Makefile |
 
-Итого: ~4000 строк vendor C-кода + ~50 строк DTS + ~10 строк config. Сопоставимо по сложности с aic8800-vendor backport (commit `a086fe536`).
+Итого: ~4000 строк vendor C-кода + ~50 строк DTS + ~10 строк config. Сопоставимо по сложности с backport-ом aic8800-vendor (серия `patches/aic8800-vendor/`).
 
 ## Зависимости и риски
 
@@ -348,15 +359,15 @@ Note: cv181x family names в vendor SDK означает «cv181x board» это
   - clock framework
   - GPIO API
   - регулятор API
-- Compat-layer через `patches/<comp>/0001-mainline-compat.patch` или ccflags include header (паттерн [[kernel-backport-compat-pattern]] из memory).
+- Compat-layer через `patches/<comp>/0001-mainline-compat.patch` или через ccflags-include заголовок. Тот же приём применён в `patches/aic8800-vendor/0001` (`aic_kernel_compat.h`) и `patches/cvitek-tpu-vendor/0001` (`tpu_kernel_compat.h`).
 
 ### Риски
 
-1. **Регистровая карта**. Vendor использует абсолютные адреса (`0x0300A100`). Эти адреса для SG2002 в TRM v1.0-alpha (стр. 88-91 для analog codec). Сверить с TRM перед написанием DT.
-2. **Clock dependencies**. Codec требует MCLK от I²S3. Если I²S subsys driver не работает, codec тоже не работает. Возможно зацикленная зависимость DT.
-3. **Pinmux**. Pins `AUD_AINL_MIC` и `AUD_AOUTR` должны быть в analog-функции (default reset state). Если что-то перевело их в GPIO/I²S, нужно вернуть.
-4. **Mainline ASoC API**. Vendor драйверы могут использовать deprecated API. Backport может требовать переписать машин-драйверы под новый API.
-5. **AW8010A enable GPIO**. В schematic нужно найти точно какой GPIO управляет EN pin усилителя (через pdfplumber или ручной разбор PDF).
+1. Регистровая карта. Vendor использует абсолютные адреса (`0x0300A100`). Эти адреса для SG2002 в TRM v1.0-alpha (стр. 88-91 для analog codec). Сверить с TRM перед написанием DT.
+2. Clock dependencies. Codec требует MCLK от I²S3. Если I²S subsys driver не работает, codec тоже не работает. Возможно зацикленная зависимость DT.
+3. Pinmux. Pins `AUD_AINL_MIC` и `AUD_AOUTR` должны быть в analog-функции (default reset state). Если что-то перевело их в GPIO/I²S, нужно вернуть.
+4. Mainline ASoC API. Vendor драйверы могут использовать deprecated API. Backport может требовать переписать машин-драйверы под новый API.
+5. AW8010A enable GPIO. В schematic нужно найти точно какой GPIO управляет EN pin усилителя (через pdfplumber или ручной разбор PDF).
 
 ## Открытые вопросы для следующих фаз (исторический архив, фазы завершены)
 
@@ -397,7 +408,7 @@ cp <vendor-sdk>/linux_5.10/sound/soc/cvitek/cv181xadc.c \
    src/linux/sound/soc/sophgo/
 
 # Создать Kconfig + Makefile + compat-header
-# Применить patches/linux/0008-sophgo-audio.patch
+# Применить patches/linux/0009-sound-soc-sophgo-cv1800b-audio-drivers.patch
 ```
 
 ### Phase 4: Userspace тест
@@ -415,13 +426,17 @@ aplay -D hw:1,0 /tmp/test.wav
 
 ## Текущий статус
 
-**Phase 1 (Discovery)** завершена. Собраны:
+### Phase 1 (Discovery), завершена
+
+Собраны:
 - Hardware-карта пинов и компонентов
 - Vendor SDK driver list + DT bindings
 - Mainline gap analysis
 - Объём backport (~4000 строк)
 
-**Phase 2 (DT-узлы) v2** завершена. После обнаружения mainline upstream работы переделана под mainline bindings. Patch `patches/linux/0008-licheerv-nano-audio-dt-nodes.patch` добавляет в cv180x.dtsi:
+### Phase 2 (DT-узлы) v2, завершена
+
+После обнаружения mainline upstream работы переделана под mainline bindings. Patch `patches/linux/0008-licheerv-nano-audio-dt-nodes.patch` добавляет в cv180x.dtsi:
 - `dma-router@154` (label dmamux, sophgo,cv1800b-dmamux) внутри `syscon@3000000` это DMA router
 - `i2s0@4100000`, `i2s1@4110000`, `i2s2@4120000`, `i2s3@4130000` это все 4 TDM/I2S controllers (sophgo,cv1800b-i2s)
 - `audio-codec@300a100` (label sound_adc, sophgo,cv1800b-sound-adc) это ADC codec для микрофона
@@ -430,7 +445,9 @@ aplay -D hw:1,0 /tmp/test.wav
 
 Все узлы со `status = "disabled"`, dtbs компилируются без warnings.
 
-**Phase 3 (driver backport)** завершена. Patch `patches/linux/0009-sound-soc-sophgo-cv1800b-audio-drivers.patch` импортирует mainline drivers из commit 75ca8602 (2026-01-28, после v6.18.x stable freeze):
+### Phase 3 (driver backport), завершена
+
+Patch `patches/linux/0009-sound-soc-sophgo-cv1800b-audio-drivers.patch` импортирует mainline drivers из commit 75ca8602 (2026-01-28, после v6.18.x stable freeze):
 - `sound/soc/sophgo/cv1800b-tdm.c` 716 строк (I2S/TDM controller)
 - `sound/soc/sophgo/cv1800b-sound-adc.c` 322 строки (ADC codec)
 - `sound/soc/sophgo/cv1800b-sound-dac.c` 208 строк (DAC codec)
@@ -445,31 +462,37 @@ Kernel configs в Makefile проекта:
 
 Все 3 модуля собраны и установлены в `rootfs/trixie/lib/modules/6.18.29/kernel/sound/soc/sophgo/`. Mainline approach был выбран вместо vendor backport (3x меньше кода: 1246 строк mainline vs 3970 vendor).
 
-**Phase 4 (board DTS activation)** завершена. Patch `patches/linux/0010-licheerv-nano-audio-activate.patch` активирует audio в DTS всех 4 board вариантов (B/E/W/WE):
+### Phase 4 (board DTS activation), завершена
+
+Patch `patches/linux/0010-licheerv-nano-audio-activate.patch` активирует audio в DTS всех 4 board вариантов (B/E/W/WE):
 - `&dmac { okay };` + `&dmamux { okay };` (DMA + router)
 - `&i2s0 { okay };` (RX, capture к internal ADC)
 - `&i2s3 { okay };` (TX, playback к internal DAC)
 - `&sound_adc { okay };` (mic codec) + `&sound_dac { okay };` (speaker codec)
 - Узел `sound` это simple-audio-card с двумя DAI-link: i2s0↔sound_adc (capture) и i2s3↔sound_dac (playback). `mclk-fs = <256>` это свойство карты, а `system-clock-frequency = <12288000>` задаётся в cpu sub-node каждого dai-link, не на верхнем уровне
 
-Routing критичен: на SG2002 I2S0 разведён жёстко на внутренний ADC, I2S3 на внутренний DAC. I2S1/I2S2 это для внешних кодеков. Попытка использовать i2s1 для микрофона даёт запись чистых нулей.
+Routing критичен. На SG2002 I2S0 разведён жёстко на внутренний ADC, I2S3 на внутренний DAC. I2S1/I2S2 это для внешних кодеков. Попытка использовать i2s1 для микрофона даёт запись чистых нулей.
 
-**Phase 5 (capture) работает на железе (2026-05-28).** ALSA card `licheervnano` (id; longname `licheerv-nano` с дефисом) создаётся, микрофон LMA2718T421 пишет реальный сигнал (подтверждено: тысячи уникальных сэмплов вместо нулей).
+### Phase 5 (capture), работает на железе 2026-05-28
 
-**Микрофон это моно на левом канале.** Схема подтверждает один вход AUD_AINL_MIC, правого микрофона нет. Рабочая запись (проверено на железе 2026-05-30, звучит отлично):
+ALSA card `licheervnano` (id, longname `licheerv-nano` с дефисом) создаётся, микрофон LMA2718T421 пишет реальный сигнал (тысячи уникальных сэмплов вместо нулей).
+
+Микрофон это моно на левом канале. Схема подтверждает один вход AUD_AINL_MIC, правого микрофона нет. Рабочая запись (проверено на железе 2026-05-30, звучит отлично):
 ```
 amixer -c 0 cset numid=1 22,0    # left +44dB, right в минимум; диапазон 0..24 = 0..+48dB шаг 2dB
 arecord -D plughw:0,0 -c 1 -r 48000 -f S16_LE -d 5 /tmp/mic.wav
 ```
-`plughw` держит железо в родном стерео-кадре и сводит в моно (правый вход после фикса тактов clock-slave 0016 молчит, downmix чист). НЕ использовать `ttable.0.0 1.0` под `type plug`: для capture он игнорируется и устройство выдаёт тишину. Мик чувствительный, близкая речь клиппит на высоком gain (даёт треск) это для близи снижать gain до 10-14, для ~2 м держать 22-24.
+`plughw` держит железо в родном стерео-кадре и сводит в моно (правый вход после фикса тактов clock-slave 0016 молчит, downmix чист). НЕ использовать `ttable.0.0 1.0` под `type plug`, для capture он игнорируется и устройство выдаёт тишину. Рекомендации по gain на дистанцию собраны выше в разделе «Подбор громкости», отдельная лестница со ступенями и цифрами в `docs/audio_capture_hw_test.md`.
 
-**Известные ограничения:**
+Известные ограничения capture:
 - mainline cv1800b drivers поддерживают только fixed 48 kHz, S16_LE.
 - Сообщение `dw_axi_dmac ... apb_regs not initialized` безвредно (KeemBay-путь, канал берётся через dmamux). Приглушено до dev_dbg в `patches/linux/0011`.
 
-**AW8010A enable (GPIOA[15]=SPK_EN)** в DT и стрим-гейтится драйвером (patches 0012 DT + 0013 драйвер): `spk-en-gpios` у `&sound_dac`, драйвер `cv1800b-sound-dac` поднимает линию в `.trigger` START и опускает в STOP. Ручной `gpioset` не нужен (и не сработает: линию держит kernel-consumer `spk-en`, userspace даёт `-EBUSY`). Проверено на железе WE 2026-06-09: линия 15 = 0 в покое, 1 во время `aplay`, 0 после. Методика чтения уровня (через `devmem` EXT_PORTA / `debugfs`) в `audio_spk_en_hw_test.md`.
+### Phase 6 (playback), работает на железе 2026-06-12
 
-**Playback hardware test** программно пройден: `aplay -D plughw:0,1` rc=0, DAC+DMA+I2S3 рабочий, гейтинг SPK_EN подтверждён на железе. Осталось только услышать звук на внешнем 8Ω speaker (header VOP/VON), сам динамик пока не подключали.
+AW8010A enable (GPIOA[15]=SPK_EN) описан в DT и стрим-гейтится драйвером (patches 0012 DT + 0013 драйвер). `spk-en-gpios` у `&sound_dac`, драйвер `cv1800b-sound-dac` поднимает линию в `.trigger` START и опускает в STOP. Ручной `gpioset` не нужен и не сработает, линию держит kernel-consumer `spk-en`, userspace получает `-EBUSY`. Проверено на железе WE 2026-06-09, линия 15 равна 0 в покое, 1 во время `aplay`, 0 после. Уровень линии читается через `busybox devmem` по EXT_PORTA (`0x03020050`, бит 15), см. `docs/gpio_setup.md`.
+
+Сам звук на внешнем 8Ω динамике (header VOP/VON) подтверждён на слух 2026-06-12, записанный микрофоном голос слышен при `aplay -D plughw:0,1`. Программная часть тракта (DAC + DMA + I2S3, `aplay` rc=0) прошла раньше, 2026-06-09.
 
 ## Инициализация микрофона: карта регистров RXADC по источникам
 
